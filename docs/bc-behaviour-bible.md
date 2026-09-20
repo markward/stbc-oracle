@@ -1,6 +1,6 @@
 # Star Trek: Bridge Commander — measured behaviour bible
 
-**Status:** living document (87 captures, five study matrices). Every number here was measured on the original
+**Status:** living document (88 captures, five study matrices). Every number here was measured on the original
 `stbc.exe` (GOG release, 2002-04-09 build) by the unattended oracle in this
 repo, and every claim names the capture in [`results/`](results/) that backs
 it. Nothing is taken from disassembly or memory; where a reverse-engineered
@@ -360,7 +360,29 @@ and the helm's in-system warp:
   Exit velocity is `MaxSpeed` along the warp heading, neither zero nor the
   entry speed.
 
-Set-to-set warp (`WarpSequence_Create`) is the other half — see §10.
+**Set-to-set warp** (`WarpSequence_Create(ship, "Systems.Vesuvi.Vesuvi5",
+5.0, "Player Start").Play()`, the AI `Warp.py` recipe: warp/impulse power
+on, speed and turn zeroed first; `warpset_kessok_rest`, Kessok Heavy from
+the Quick Battle region into Vesuvi5) is a scripted five-phase sequence,
+not physics:
+
+| phase | duration | what the samples show |
+|---|---|---|
+| 1. entry delay | **1.0 s** after `Play()` | parked, speed 0 (the script's `fEntryDelayTime`) |
+| 2. streak in the origin set | **~2.25 s** | `GetVelocity` reports **700 GU/s**; position leaves along the heading, then is shuffled around the origin — the ship is being moved by the sequence, out of sight |
+| 3. the "warp" set | **exactly `warp_time`** (5.0 s) | ship parked at the origin of a set named `warp`, speed 0 |
+| 4. dewarp in the destination | **~1.9 s** | appears ~640 GU from the placement and is *moved* to it (~340 GU/s) with `GetVelocity` = 0 — scripted motion, not velocity |
+| 5. arrival | — | at the placement (`Player Start`), speed 0; the script then commands `SetImpulse(0.2)` and the ship approaches **0.370 GU/s = 0.1 × MaxSpeed** under the 1 s law (0.25 at +1 s, 0.34 at +2.4 s) |
+
+Total 11.5 s for a 5 s warp. Contract for a remake: after a set-to-set warp
+the ship is **at the placement, at rest, then creeping at ~0.1 × MaxSpeed**
+— it does not arrive with its pre-warp velocity (the sequence zeroes it
+before entry) and it does not arrive at `MaxSpeed` as an in-system warp
+does. Two harness notes: the destination must be given as the **system
+module name**, not the set name (the script strips to the set after the
+last dot and loads the system itself); and a warp with no destination
+(`WarpSequence_Create(ship, None, t)`, the AI "bail out" form) removes the
+ship from the world, which breaks anything still sampling it.
 
 ### 7.4 Collisions — what mass is for
 
@@ -462,6 +484,7 @@ cadences). File = the capture whose raw rows are the reference.
 | T4 | quantum 900, Klingon 1400; ammo switch unloads tubes (Sovereign reload 40 s) | exact | `torpedo_sovereign_quantum_57`, `torpedo_warbird_front_57` |
 | S5 | regen rate identical at red/yellow/green alert | ±5 % | `regen_*_face50` |
 | W1 | in-system warp: step to 75.0 GU/s, duration = distance/75, exit at MaxSpeed regardless of entry speed, drop-out at the requested stop distance | exact / ±10 GU | `warp_*` |
+| W2 | set-to-set warp: 1.0 s entry delay, ~2.25 s at 700 GU/s in the origin set, `warp_time` in the warp set, ~1.9 s scripted dewarp to the placement, arrive at rest then creep to 0.1 × MaxSpeed | ±0.2 s per phase | `warpset_kessok_rest` |
 | C1 | collision is elastic with hardpoint masses (post-impact speeds) | ±3 % | `ram_*` |
 | C2 | rammed-ship damage = 8.2 × 2μv; shields untouched | ±10 % | `ram_*` |
 | P4 | bolt = script damage × emitter DamageScale; power setting changes shot cost 0.5/1/2, not damage | exact | `pulse_warbird_front_40_{meta,low,high}` |
@@ -476,13 +499,8 @@ cadences). File = the capture whose raw rows are the reference.
   GU/s in every mode).
 * Collision damage split per hull pairing (BoP → Kessok: 1417 to the
   Kessok, BoP survived at 5.2 GU/s — no clean constant).
-* Set-to-set warp (`WarpSequence_Create` into a second system). Harness
-  modes `warpset` / `warpset_moving` exist; the destination system
-  (`Systems.Vesuvi.Vesuvi5`) imports and initialises when the import is run
-  in `QuickBattle`'s namespace, but `WarpSequence_Create(ship, "Vesuvi5",
-  5.0, "Player Start").Play()` halts the game on its debug console with no
-  marker after it. Not pursued further (two freezes on the user's screen);
-  the in-system half (§7.3) is measured.
+* Why the post-warp creep settles at 0.1 × MaxSpeed when the script asks
+  for `SetImpulse(0.2)` (engine power state after warp?).
 * Shield regen vs a reactor that cannot supply the generator's
   `NormalPowerPerSecond` (only the generator's own power-wanted was varied).
 * AI: the Warbird AI crashes the game (Bird of Prey, also a cloaker, does

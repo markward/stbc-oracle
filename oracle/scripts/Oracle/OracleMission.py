@@ -85,6 +85,7 @@ def _read_inputs():
     P["target_fire"]  = int(_getf("target_fire", 0))    # 1 = player phasers + torpedoes fire at the attacker at act time
     P["warp_stop_gu"] = _getf("warp_stop_gu", 50.0)     # InSystemWarp stop distance from the target
     P["warp_time"]    = _getf("warp_time", 5.0)         # WarpSequence duration for set-to-set
+    P["warp_dest"]    = _gets("warp_dest", "Systems.Vesuvi.Vesuvi5")  # module name, or "none" = warp out
     for k in P.keys():
         _log.meta("in_" + k, P[k])
 
@@ -556,12 +557,42 @@ def OnWarp(pObject, pEvent):
     except:
         _log.mark("warp_error", _log.exc())
 
+ET_WARP_DONE = App.UtopiaModule_GetNextEventType()
+
+def OnWarpDone(pObject, pEvent):
+    _log.mark("warpset_done", "t=%.3f" % (App.g_kUtopiaModule.GetGameTime() - g_t0))
+
 def OnWarpSet(pObject, pEvent):
+    """AI/PlainAI/Warp.py's recipe, step by step with markers."""
     try:
-        pSeq = App.WarpSequence_Create(g_pAttacker, "Vesuvi5", P["warp_time"], "Player Start")
+        pWarp = g_pAttacker.GetWarpEngineSubsystem()
+        if pWarp:
+            pWarp.SetPowerPercentageWanted(1.0)
+            pWarp.TurnOn()
+        pImp = g_pAttacker.GetImpulseEngineSubsystem()
+        if pImp:
+            pImp.SetPowerPercentageWanted(1.0)
+            pImp.TurnOn()
+        g_pAttacker.SetSpeed(0, App.TGPoint3_GetModelForward(), App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
+        vZero = App.TGPoint3(); vZero.SetXYZ(0.0, 0.0, 0.0)
+        g_pAttacker.SetTargetAngularVelocityDirect(vZero)
+        _log.mark("warpset_1_engines", "warp=%s" % str(pWarp is not None))
+        if P["warp_dest"] == "none":
+            pSeq = App.WarpSequence_Create(g_pAttacker, None, P["warp_time"])
+        else:
+            pSeq = App.WarpSequence_Create(g_pAttacker, P["warp_dest"], P["warp_time"], "Player Start")
+        _log.mark("warpset_2_created", str(pSeq))
+        pMission = MissionLib.GetMission()
+        pMission.AddPythonFuncHandlerForInstance(ET_WARP_DONE, __name__ + ".OnWarpDone")
+        pEvent = App.TGEvent_Create()
+        pEvent.SetEventType(ET_WARP_DONE)
+        pEvent.SetDestination(pMission)
+        pSeq.AddCompletedEvent(pEvent)
         pSeq.SetEventDestination(g_pAttacker)
+        _log.mark("warpset_3_wired", "1")
         pSeq.Play()
-        _log.mark("warpset", "t=%.3f speed=%.3f" % (App.g_kUtopiaModule.GetGameTime() - g_t0, _speed(g_pAttacker)))
+        _log.mark("warpset_4_played", "t=%.3f speed=%.3f" % (
+            App.g_kUtopiaModule.GetGameTime() - g_t0, _speed(g_pAttacker)))
     except:
         _log.mark("warpset_error", _log.exc())
 

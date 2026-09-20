@@ -332,6 +332,7 @@ def main(argv=None) -> int:
     ap.add_argument("--target-fire", action="store_true", help="player ship shoots back at act time")
     ap.add_argument("--warp-stop-gu", type=float, default=50.0)
     ap.add_argument("--warp-time", type=float, default=5.0)
+    ap.add_argument("--warp-dest", default="Systems.Vesuvi.Vesuvi5", help='destination system module, or "none" to warp out')
     ap.add_argument("--motion", default="none", choices=["none", "impulse", "impulse125", "impulse200", "impulse_power125", "warp", "warp_moving", "warpset", "warpset_moving", "coast", "yaw", "pitch", "roll", "yawdirect"])
     ap.add_argument("--range-gu", type=float, default=57.0)
     ap.add_argument("--angle-deg", type=float, default=0.0, help="attacker bearing: 0 ahead, 90 starboard, 180 astern")
@@ -367,7 +368,7 @@ def main(argv=None) -> int:
         "shield_power": a.shield_power, "gen_frac": a.gen_frac,
         "ai": 1 if a.ai else 0, "ai_level": a.ai_level, "ai_log": 1 if a.ai_log else 0,
         "target_motion": a.target_motion, "target_fire": 1 if a.target_fire else 0,
-        "warp_stop_gu": a.warp_stop_gu, "warp_time": a.warp_time,
+        "warp_stop_gu": a.warp_stop_gu, "warp_time": a.warp_time, "warp_dest": a.warp_dest,
     }
     result = run(a.oracle_dir, params, a.timeout, a.shot, a.shot_at)
     print("hook markers:", ", ".join(k[3:] for k in result["hook"]))
