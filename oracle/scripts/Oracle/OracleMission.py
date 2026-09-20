@@ -76,6 +76,11 @@ def _read_inputs():
     P["time_scale"]   = _getf("time_scale", 1.0)        # UtopiaModule.SetTimeScale at takeover
     P["target_alert"] = _gets("target_alert", "red")    # red|yellow|green
     P["tractor_mode"] = _gets("tractor_mode", "hold")   # hold|tow|pull|push
+    P["shield_power"] = _getf("shield_power", -1.0)     # target ShieldGenerator.SetPowerPercentageWanted
+    P["gen_frac"]     = _getf("gen_frac", -1.0)         # target ShieldGenerator condition fraction
+    P["ai"]           = int(_getf("ai", 0))             # 1 = leave the QuickBattle AI on the attacker
+    P["ai_level"]     = _getf("ai_level", 0.5)          # BasicAttack Difficulty 0.0 / 0.5 / 1.0
+    P["ai_log"]       = int(_getf("ai_log", 0))         # 1 = ArtificialIntelligence_LogAITree("AITree.txt")
     for k in P.keys():
         _log.meta("in_" + k, P[k])
 
@@ -229,6 +234,10 @@ def _record_meta():
         try:
             if P["weapon"] == "torpedo":
                 _log.meta("bank%d" % i, "%s" % b.GetName())
+            elif P["weapon"] == "pulse":
+                _log.meta("bank%d" % i, "%s md=%.1f mdd=%.1f mc=%.2f dscale=%s pscaled=%s pset=%s" % (
+                    b.GetName(), b.GetMaxDamage(), b.GetMaxDamageDistance(), b.GetMaxCharge(),
+                    str(b.GetDamageScale()), str(b.GetPowerScaled()), str(b.GetPowerSetting())))
             else:
                 _log.meta("bank%d" % i, "%s md=%.1f mdd=%.1f mc=%.2f" % (
                     b.GetName(), b.GetMaxDamage(), b.GetMaxDamageDistance(), b.GetMaxCharge()))
@@ -298,7 +307,7 @@ def _OracleInitialize(pMission):
     _log.mark("qb_initialized", "1")
     try:
         QB.g_sPlayerType = P["target"]
-        QB.g_kEnemyList = [_enemy_entry(P["attacker"], 1)]
+        QB.g_kEnemyList = [_enemy_entry(P["attacker"], P["ai_level"])]
         QB.g_kFriendList = []
         pTopWindow = App.TopWindow_GetTopWindow()
         if not pTopWindow.IsBridgeVisible():
@@ -323,12 +332,21 @@ def _OracleStartSimulation2(pObject, pEvent):
         if g_pAttacker is None:
             _log.mark("no_attacker", "1")
             return
-        g_pAttacker.ClearAI()
-        for getter in ("GetPhaserSystem", "GetPulseWeaponSystem", "GetTorpedoSystem"):
-            try:
-                getattr(g_pAttacker, getter)().StopFiring()
-            except:
-                pass
+        if P["ai"]:
+            _log.mark("ai_kept", "level=%.2f" % P["ai_level"])
+            if P["ai_log"]:
+                try:
+                    App.ArtificialIntelligence_LogAITree("AITree.txt")
+                    _log.mark("ai_log", "AITree.txt")
+                except:
+                    _log.mark("ai_log_error", _log.exc())
+        else:
+            g_pAttacker.ClearAI()
+            for getter in ("GetPhaserSystem", "GetPulseWeaponSystem", "GetTorpedoSystem"):
+                try:
+                    getattr(g_pAttacker, getter)().StopFiring()
+                except:
+                    pass
         # Target at the origin facing -Y.  Attacker on a sphere of radius
         # range_gu at (angle, elev) measured from the target's nose, pointed at
         # the target.  angle 0 -> dead ahead, 90 -> off the target's starboard
@@ -356,7 +374,8 @@ def _OracleStartSimulation2(pObject, pEvent):
         _place(g_pTarget, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0)
         _place(g_pAttacker, ax, ay, az, fx, fy, fz, ux, uy, uz)
         _still(g_pTarget)
-        _still(g_pAttacker)
+        if not P["ai"]:
+            _still(g_pAttacker)
         pPM = g_pSet.GetProximityManager()
         if pPM:
             pPM.UpdateObject(g_pTarget)
@@ -366,6 +385,16 @@ def _OracleStartSimulation2(pObject, pEvent):
             _alert(g_pTarget, P["target_alert"])
         if P["disable_target_weapons"]:
             _zero_weapons(g_pTarget)
+        if P["shield_power"] >= 0.0 or P["gen_frac"] >= 0.0:
+            try:
+                gen = g_pTarget.GetShields()
+                if P["shield_power"] >= 0.0:
+                    gen.SetPowerPercentageWanted(P["shield_power"])
+                if P["gen_frac"] >= 0.0:
+                    gen.SetCondition(gen.GetMaxCondition() * P["gen_frac"])
+                _log.mark("shield_gen", "power=%.2f cond=%.0f" % (gen.GetPowerPercentageWanted(), gen.GetCondition()))
+            except:
+                _log.mark("shield_gen_error", _log.exc())
         if P["torp_type"] >= 0:
             try:
                 g_pAttacker.GetTorpedoSystem().SetAmmoType(P["torp_type"])
@@ -512,8 +541,26 @@ def OnSample(pObject, pEvent):
             f = g_pAttacker.GetWorldForwardTG()
             p = g_pAttacker.GetWorldLocation()
             sp = (v.x * v.x + v.y * v.y + v.z * v.z) ** 0.5
-            _log.row("c t=%.4f p=%s v=%s w=%s fw=%s sp=%.4f" % (
-                t, _p3(p), _p3(v), _p3(w), _p3(f), sp))
+            extra = ""
+            if P["ai"]:
+                try:
+                    tg = g_pAttacker.GetTarget()
+                    tn = "-"
+                    if tg is not None:
+                        tn = string.replace(tg.GetName(), " ", "_")
+                    fs = ""
+                    for (tag, getter) in (("P", "GetPhaserSystem"), ("U", "GetPulseWeaponSystem"), ("T", "GetTorpedoSystem")):
+                        try:
+                            ws = getattr(g_pAttacker, getter)()
+                            if ws is not None and ws.IsTryingToFire():
+                                fs = fs + tag
+                        except:
+                            pass
+                    extra = " rng=%.3f tgt=%s fire=%s" % (_range(), tn, fs or "-")
+                except:
+                    extra = " rng=%.3f" % _range()
+            _log.row("c t=%.4f p=%s v=%s w=%s fw=%s sp=%.4f%s" % (
+                t, _p3(p), _p3(v), _p3(w), _p3(f), sp, extra))
         g_rows = g_rows + 1
         if g_rows == 1:
             _log.mark("first_sample", "t=%.3f" % t)
@@ -535,6 +582,11 @@ def OnEnd(pObject, pEvent):
         _weapon_system(g_pAttacker).StopFiring()
     except:
         pass
+    if P["ai"] and P["ai_log"]:
+        try:
+            App.ArtificialIntelligence_LogAITree(None)   # flush the tree log
+        except:
+            pass
     ok = _log.flush(1)
     _log.mark("flushed", "rows=%d ok=%d" % (g_rows, ok))
     try:

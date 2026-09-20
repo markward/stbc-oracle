@@ -159,7 +159,7 @@ def parse_row(line: str) -> dict:
         if "=" not in tok:
             continue
         k, v = tok.split("=", 1)
-        if k in ("t", "h", "sp", "ah", "tsp"):
+        if k in ("t", "h", "sp", "ah", "tsp", "rng"):
             d[k] = float(v)
         elif k == "f":
             d[k] = int(v)
@@ -167,6 +167,8 @@ def parse_row(line: str) -> dict:
             d[k] = _floats(v)
         elif k == "fi":
             d[k] = [int(x) for x in v.split(",") if x != ""]
+        elif k in ("tgt", "fire"):
+            d[k] = v
     return d
 
 
@@ -276,6 +278,10 @@ def run(oracle_dir: Path, params: dict, timeout_s: float, shot: Path | None,
             if proc.poll() is None:
                 proc.kill()
     result = parse_output(oracle_dir)
+    tree = oracle_dir / "AITree.txt"
+    if params.get("ai_log") and tree.exists():
+        result["ai_tree_log"] = tree.read_text(errors="replace")
+        tree.unlink()
     result["elapsed_s"] = round(time.time() - t0, 1)
     result["params"] = params
     result["timed_out"] = not done
@@ -294,6 +300,11 @@ def main(argv=None) -> int:
     ap.add_argument("--time-scale", type=float, default=1.0)
     ap.add_argument("--target-alert", default="red", choices=["red", "yellow", "green"])
     ap.add_argument("--tractor-mode", default="hold", choices=["hold", "tow", "pull", "push"])
+    ap.add_argument("--shield-power", type=float, default=-1.0, help="target shield generator power wanted")
+    ap.add_argument("--gen-frac", type=float, default=-1.0, help="target shield generator condition fraction")
+    ap.add_argument("--ai", action="store_true", help="leave the Quick Battle AI driving the attacker")
+    ap.add_argument("--ai-level", type=float, default=0.5, help="BasicAttack difficulty 0.0/0.5/1.0")
+    ap.add_argument("--ai-log", action="store_true", help="engine AI tree log to <oracle>/AITree.txt")
     ap.add_argument("--motion", default="none", choices=["none", "impulse", "coast", "yaw", "pitch", "roll"])
     ap.add_argument("--range-gu", type=float, default=57.0)
     ap.add_argument("--angle-deg", type=float, default=0.0, help="attacker bearing: 0 ahead, 90 starboard, 180 astern")
@@ -326,6 +337,8 @@ def main(argv=None) -> int:
         "sample_dt": a.sample_dt, "disable_target_weapons": 0 if a.keep_target_weapons else 1,
         "rows": a.rows, "torp_type": a.torp_type, "pulse_power": a.pulse_power,
         "time_scale": a.time_scale, "target_alert": a.target_alert, "tractor_mode": a.tractor_mode,
+        "shield_power": a.shield_power, "gen_frac": a.gen_frac,
+        "ai": 1 if a.ai else 0, "ai_level": a.ai_level, "ai_log": 1 if a.ai_log else 0,
     }
     result = run(a.oracle_dir, params, a.timeout, a.shot, a.shot_at)
     print("hook markers:", ", ".join(k[3:] for k in result["hook"]))

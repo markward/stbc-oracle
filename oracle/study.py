@@ -21,7 +21,7 @@ BASE = dict(attacker="KessokHeavy", target="Galaxy", weapon="phaser", motion="no
             power_wanted=-1.0, shield_face=-1, shield_frac=1.0, shields_off=0,
             settle_s=2.0, fire_at=1.0, duration=12.0, sample_dt=0.03,
             disable_target_weapons=1, rows="ab", torp_type=-1, pulse_power=-1,
-            time_scale=1.0, target_alert="red", tractor_mode="hold")
+            time_scale=1.0, target_alert="red", tractor_mode="hold", shield_power=-1.0, gen_frac=-1.0, ai=0, ai_level=0.5, ai_log=0)
 
 MATRIX: dict[str, dict] = {
     # --- phasers: intensity table -------------------------------------------
@@ -90,6 +90,19 @@ MATRIX: dict[str, dict] = {
     "tractor_galaxy_hold": dict(attacker="Galaxy", weapon="tractor", tractor_mode="hold", rows="abc", range_gu=20.0, duration=15.0),
     "tractor_galaxy_tow":  dict(attacker="Galaxy", weapon="tractor", tractor_mode="tow", rows="abc", range_gu=20.0, duration=15.0),
     "tractor_galaxy_push": dict(attacker="Galaxy", weapon="tractor", tractor_mode="push", rows="abc", range_gu=20.0, duration=15.0),
+    # --- matrix 3 ------------------------------------------------------------
+    "phaser_high_port_57":       dict(angle_deg=270.0),
+    "pulse_warbird_front_40_meta": dict(attacker="Warbird", weapon="pulse", range_gu=40.0),
+    "torpedo_warbird_front_57_noshields": dict(attacker="Warbird", weapon="torpedo", duration=20.0, shields_off=1),
+    "regen_power50_face50": dict(weapon="none", shield_face=0, shield_frac=0.5, duration=20.0, shield_power=0.5),
+    "regen_gen50_face50":   dict(weapon="none", shield_face=0, shield_frac=0.5, duration=20.0, gen_frac=0.5),
+    "regen_gen20_face50":   dict(weapon="none", shield_face=0, shield_frac=0.5, duration=20.0, gen_frac=0.2),
+    "ram_galaxy_kessok": dict(attacker="Galaxy", target="KessokHeavy", weapon="none", motion="impulse", rows="abc", range_gu=30.0, duration=15.0),
+    "ram_bop_kessok":    dict(attacker="BirdOfPrey", target="KessokHeavy", weapon="none", motion="impulse", rows="abc", range_gu=30.0, duration=15.0),
+    "tractor_galaxy_galaxy_hold": dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="hold", rows="abc", range_gu=15.0, duration=30.0),
+    "tractor_galaxy_galaxy_tow":  dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="tow", rows="abc", range_gu=15.0, duration=30.0),
+    "tractor_galaxy_galaxy_push": dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="push", rows="abc", range_gu=15.0, duration=30.0),
+    "tractor_galaxy_galaxy_pull": dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="pull", rows="abc", range_gu=15.0, duration=30.0),
 }
 
 

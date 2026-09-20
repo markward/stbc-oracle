@@ -1,6 +1,6 @@
 # Star Trek: Bridge Commander — measured behaviour bible
 
-**Status:** living document (57 captures, two study matrices). Every number here was measured on the original
+**Status:** living document (69 captures, three study matrices). Every number here was measured on the original
 `stbc.exe` (GOG release, 2002-04-09 build) by the unattended oracle in this
 repo, and every claim names the capture in [`results/`](results/) that backs
 it. Nothing is taken from disassembly or memory; where a reverse-engineered
@@ -119,7 +119,11 @@ So a Galaxy's sustained phaser output is ~125/s (one 250-point bank at
 
 ## 3. Pulse weapons (disruptor cannons)
 
-`PulseWeapon` emitters fire bolts; each bolt is one hit of a fixed size.
+`PulseWeapon` emitters fire bolts; each bolt is one hit of
+`projectile script GetDamage() × PulseWeapon.GetDamageScale()`. The Warbird's
+`RomulanCannon` script says 400 and its cannons report `DamageScale 0.5`
+(power setting MED), so bolts land as 200; the Bird of Prey's
+`PulseDisruptor` (220) lands whole (`pulse_warbird_front_40_meta`).
 
 | Ship | emitters | bolt | volley pattern | file |
 |---|---|---|---|---|
@@ -133,8 +137,11 @@ a face when they are up (Warbird 1600 either way).
 **No range falloff and no power-setting effect on bolts:** Warbird bursts
 at 40 / 100 / 150 GU are 1501 / 1514 / 1526, and `EnergyWeapon.SetPowerSetting`
 LOW or HIGH on the emitters leaves the burst at 1501
-(`pulse_warbird_front_{40_low,40_high,100,150}`). (The RE says the setting
-scales the per-shot charge *cost*; that was not visible within one burst.)
+(`pulse_warbird_front_{40_low,40_high,100,150}`). What the setting does
+change is the **charge cost per shot**: Warbird cannon `MaxCharge` 2.0 drops
+by **0.5 / 1.0 / 2.0** per bolt at LOW / MED / HIGH (2.0 → 1.53 / 1.03 /
+0.03), recharging at ~0.16/s — the setting buys more or fewer bolts per
+charge, never bigger ones.
 
 ---
 
@@ -159,7 +166,10 @@ after the switch. Reference for the type not fired: Antimatter 440 @ 35 GU/s.
 Photon torpedoes on a bare hull (`torpedo_galaxy_front_57_noshields`): four
 500-point hits gave the hull 2000 **and** each subsystem in the footprint
 1725–2000 (sensor array, four forward tubes) — the §6.1 rule applies to
-torpedoes as to beams.
+torpedoes as to beams. Klingon torpedoes (`DamageRadiusFactor` 0.2 vs the
+photon's 0.13) reach further: four 1400-point hits gave the hull 7108, the
+sensor array 6938, every forward tube 2400 and the shield generator 1475
+(`torpedo_warbird_front_57_noshields`).
 
 Two Positron torpedoes on an **unshielded** Galaxy (15 000 hull) killed it:
 the hull went to 270 and the death sequence zeroed every subsystem
@@ -183,7 +193,9 @@ geometry, not by the target's orientation to the attacker's bow:
 | directly below | index 3 (max 4000) — **bottom is face 3** | `phaser_high_bottom_57` |
 | 45° / 60° / 75° above | index 2 (max 4000) — **top is face 2** | `phaser_high_elev{45,60,75}_57` |
 
-**Index map: 0 front, 1 rear, 2 top, 3 bottom, 4 port (by elimination),
+| 270° (port) | index 4 (max 4000) — **port is face 4** | `phaser_high_port_57` |
+
+**Index map (all six measured): 0 front, 1 rear, 2 top, 3 bottom, 4 port,
 5 starboard.** From above, the hit footprint walks aft with elevation:
 shield generator at 45°, warp core + aft tubes + centre impulse at 60–75°.
 (`phaser_high_top_57` at 89° is void: an earlier harness bug left the
@@ -227,7 +239,14 @@ Each face regains **6.15 points every 0.656 s** (≈ 9.4/s per face, Galaxy,
 even a zeroed face is back to ~105 after 11 s (`*_noshields` runs). Regen
 ticks are visible as −6.1/−6.2 "negative damage" steps in every capture.
 The rate is the same at **red, yellow and green alert** (a face preset to
-50 % climbs at 9.2–9.5/s in all three, `regen_{red,yellow,green}_face50`).
+50 % climbs at 9.2–9.5/s in all three, `regen_{red,yellow,green}_face50`)
+and at 50 % generator power wanted (`regen_power50_face50`).
+
+**Generator condition gate:** with the shield generator's condition below
+its hardpoint `DisabledPercentage` (0.75 for the Galaxy), **every face drops
+to 0 immediately and nothing regenerates** — at 50 % and at 20 % condition
+alike (`regen_gen{50,20}_face50`). A remake must treat the generator as
+binary: healthy ⇒ shields; disabled ⇒ no shields at all.
 
 ---
 
@@ -325,21 +344,28 @@ masses**, and the damage is proportional to the impulse exchanged.
 Elastic model: `v_target' = 2 mₐ v / (mₐ + mₜ)`, `v_attacker' = (mₐ − mₜ) v / (mₐ + mₜ)`.
 Damage to the rammed Galaxy is **8.2 × J** with `J = 2 μ v` (μ the reduced
 mass): 744 → 6089, 716 → 5870, 404 → 3527. The rammer's own damage per unit
-impulse depends on the hull (Galaxy 8.2, Kessok 2.5, BoP ≥ 9.9) — the RE
-puts collision damage on the contact impulse with a per-contact clamp, so
-that constant is contact-geometry dependent; measure it per hull. Collision
+impulse depends on the hull (Galaxy 8.2, Kessok 2.5, BoP ≥ 9.9), and the
+reverse pairing does not reduce to one constant either: a Galaxy hitting a
+parked Kessok Heavy at 3.83 GU/s took **9561** itself and gave the Kessok
+2675, and that impact was *not* elastic (the Galaxy stayed under power and
+kept 3.5 GU/s; `ram_galaxy_kessok`). The RE puts collision damage on the
+per-contact impulse with a clamp, so the split is contact-geometry
+dependent: treat the elastic bounce and the ~8 × J order of magnitude as the
+contract, and measure any specific pairing. Collision
 damage **bypasses shields entirely** (every face unchanged in all three
 runs) and a rammer left under power hits again every ~3 s (Kessok: 5870,
 4487, 4693 → Galaxy destroyed).
 
 ### 7.4 Tractor beam
 
-With a Galaxy's tractor system engaged on a parked Kessok Heavy at 20 GU
-(`tractor_galaxy_{hold,tow,push}`) the beam fires (one emitter) and the
-target creeps toward the projector at **0.007 GU/s**; the projector does
-not move. `SetMode` hold / tow / push made **no measurable difference** in
-12 s. Treat the tractor as unmeasured beyond "it exists and barely moves a
-500-mass hull"; a lighter target and longer window are needed.
+With a Galaxy's tractor system engaged on a parked target
+(`tractor_galaxy_*`, Kessok Heavy at 20 GU; `tractor_galaxy_galaxy_*`,
+Galaxy at 15 GU, 30 s) the beam fires (one emitter) and the target creeps
+toward the projector at **0.007 GU/s regardless of target mass (500 or
+120) and of mode** (hold / tow / pull / push all identical), stopping after
+~5 GU of travel (~2.7 GU in one hold run); the projector never moves. The
+tractor as scripted here is nearly inert — whatever makes it useful in play
+(projector motion, relative velocity) is not exercised by a parked pair.
 
 ---
 
@@ -395,18 +421,20 @@ cadences). File = the capture whose raw rows are the reference.
 | S5 | regen rate identical at red/yellow/green alert | ±5 % | `regen_*_face50` |
 | C1 | collision is elastic with hardpoint masses (post-impact speeds) | ±3 % | `ram_*` |
 | C2 | rammed-ship damage = 8.2 × 2μv; shields untouched | ±10 % | `ram_*` |
+| P4 | bolt = script damage × emitter DamageScale; power setting changes shot cost 0.5/1/2, not damage | exact | `pulse_warbird_front_40_{meta,low,high}` |
+| S6 | shield generator below DisabledPercentage ⇒ all faces 0, no regen | exact | `regen_gen{50,20}_face50` |
+| S7 | port is face 4 | exact | `phaser_high_port_57` |
 
 ---
 
 ## 10. Not yet measured / open
 
-* Tractor beam modes and force (§7.4) — needs a light target and a longer
-  window.
-* Collision damage to the *rammer* per hull; whether the 8.2 × J constant
-  holds for non-Galaxy targets.
-* Pulse `PowerSetting`: charge cost per shot (needs `c=` charge rows on
-  pulse emitters over several bursts).
+* Tractor beam: what produces its in-game pull (a parked pair shows 0.007
+  GU/s in every mode).
+* Collision damage split per hull pairing (BoP → Kessok run crashed the
+  game; not retried).
 * Warp: entry/exit velocity, in-system vs set-to-set.
-* Shield regen vs generator power allocation and generator damage.
-* Torpedo splash radius (`DamageRadiusFactor`) vs footprint size.
-* Face 4 (port) confirmation by a 270° run.
+* Shield regen vs a reactor that cannot supply the generator's
+  `NormalPowerPerSecond` (only the generator's own power-wanted was varied).
+* AI behaviour: approach, engagement range, firing decisions, evasion — the
+  oracle's `--ai` mode traces it; see §11 once captured.
