@@ -21,7 +21,7 @@ BASE = dict(attacker="KessokHeavy", target="Galaxy", weapon="phaser", motion="no
             power_wanted=-1.0, shield_face=-1, shield_frac=1.0, shields_off=0,
             settle_s=2.0, fire_at=1.0, duration=12.0, sample_dt=0.03,
             disable_target_weapons=1, rows="ab", torp_type=-1, pulse_power=-1,
-            time_scale=1.0, target_alert="red", tractor_mode="hold", shield_power=-1.0, gen_frac=-1.0, ai=0, ai_level=0.5, ai_log=0)
+            time_scale=1.0, target_alert="red", tractor_mode="hold", shield_power=-1.0, gen_frac=-1.0, ai=0, ai_level=0.5, ai_log=0, target_motion="none", target_fire=0)
 
 MATRIX: dict[str, dict] = {
     # --- phasers: intensity table -------------------------------------------
@@ -109,6 +109,10 @@ MATRIX: dict[str, dict] = {
     "ai_kessok_vs_parked_galaxy_low":  dict(weapon="none", ai=1, ai_level=0.0, range_gu=150.0, duration=90.0, rows="abc", disable_target_weapons=0),
     "ai_kessok_vs_parked_galaxy_high": dict(weapon="none", ai=1, ai_level=1.0, range_gu=150.0, duration=90.0, rows="abc", disable_target_weapons=0),
     "ai_galaxy_vs_parked_galaxy_med":  dict(attacker="Galaxy", weapon="none", ai=1, ai_level=0.5, range_gu=150.0, duration=90.0, rows="abc", disable_target_weapons=0),
+    "ai_kessok_vs_moving_galaxy_med":   dict(weapon="none", ai=1, ai_level=0.5, range_gu=150.0, duration=90.0, rows="abc", disable_target_weapons=0, target_motion="impulse"),
+    "ai_kessok_vs_circling_galaxy_med": dict(weapon="none", ai=1, ai_level=0.5, range_gu=150.0, duration=90.0, rows="abc", disable_target_weapons=0, target_motion="yaw"),
+    "ai_kessok_vs_shooting_galaxy_med": dict(weapon="none", ai=1, ai_level=0.5, range_gu=150.0, duration=90.0, rows="abc", disable_target_weapons=0, target_fire=1),
+    "ai_bop_vs_parked_galaxy_med":     dict(attacker="BirdOfPrey", weapon="none", ai=1, ai_level=0.5, range_gu=150.0, duration=90.0, rows="abc", disable_target_weapons=0),
     "ai_warbird_vs_parked_galaxy_med": dict(attacker="Warbird", weapon="none", ai=1, ai_level=0.5, range_gu=150.0, duration=90.0, rows="abc", disable_target_weapons=0),
     "tractor_galaxy_galaxy_pull": dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="pull", rows="abc", range_gu=15.0, duration=30.0),
 }

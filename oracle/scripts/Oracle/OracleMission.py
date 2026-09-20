@@ -80,7 +80,9 @@ def _read_inputs():
     P["gen_frac"]     = _getf("gen_frac", -1.0)         # target ShieldGenerator condition fraction
     P["ai"]           = int(_getf("ai", 0))             # 1 = leave the QuickBattle AI on the attacker
     P["ai_level"]     = _getf("ai_level", 0.5)          # BasicAttack Difficulty 0.0 / 0.5 / 1.0
-    P["ai_log"]       = int(_getf("ai_log", 0))         # 1 = ArtificialIntelligence_LogAITree("AITree.txt")
+    P["ai_log"]       = int(_getf("ai_log", 0))         # 1 = ArtificialIntelligence_LogAITree("AITree.txt") (armed in OracleGame)
+    P["target_motion"] = _gets("target_motion", "none")  # none|impulse|yaw : player ship drives itself at act time
+    P["target_fire"]  = int(_getf("target_fire", 0))    # 1 = player phasers + torpedoes fire at the attacker at act time
     for k in P.keys():
         _log.meta("in_" + k, P[k])
 
@@ -334,12 +336,6 @@ def _OracleStartSimulation2(pObject, pEvent):
             return
         if P["ai"]:
             _log.mark("ai_kept", "level=%.2f" % P["ai_level"])
-            if P["ai_log"]:
-                try:
-                    App.ArtificialIntelligence_LogAITree("AITree.txt")
-                    _log.mark("ai_log", "AITree.txt")
-                except:
-                    _log.mark("ai_log_error", _log.exc())
         else:
             g_pAttacker.ClearAI()
             for getter in ("GetPhaserSystem", "GetPulseWeaponSystem", "GetTorpedoSystem"):
@@ -495,6 +491,30 @@ def _act_motion():
             except:
                 _log.mark("angvel_fraction_error2", _log.exc())
 
+def _act_target():
+    """Optional player-ship behaviour at act time: drive and/or shoot back."""
+    fwd = App.TGPoint3_GetModelForward()
+    tm = P["target_motion"]
+    try:
+        if tm == "impulse":
+            g_pTarget.SetImpulse(1.0, fwd, App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
+        elif tm == "yaw":
+            g_pTarget.SetImpulse(0.5, fwd, App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
+            v = App.TGPoint3(); v.SetXYZ(0.0, 0.0, 1.0)
+            g_pTarget.SetTargetAngularVelocityFraction(v)
+    except:
+        _log.mark("target_motion_error", _log.exc())
+    if P["target_fire"]:
+        try:
+            g_pTarget.SetTarget(g_pAttacker.GetName())
+            for getter in ("GetPhaserSystem", "GetTorpedoSystem", "GetPulseWeaponSystem"):
+                ws = getattr(g_pTarget, getter)()
+                if ws is not None:
+                    ws.StartFiring(g_pAttacker)
+            _log.mark("target_fire", "1")
+        except:
+            _log.mark("target_fire_error", _log.exc())
+
 def OnCut(pObject, pEvent):
     try:
         g_pAttacker.SetImpulse(0.0, App.TGPoint3_GetModelForward(), App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
@@ -513,6 +533,7 @@ def OnAct(pObject, pEvent):
             _act_weapon()
         if P["motion"] != "none":
             _act_motion()
+        _act_target()
         _record_meta()
         _log.mark("acted", "t=%.3f weapon=%s motion=%s" % (
             App.g_kUtopiaModule.GetGameTime() - g_t0, P["weapon"], P["motion"]))

@@ -1,6 +1,6 @@
 # Star Trek: Bridge Commander — measured behaviour bible
 
-**Status:** living document (78 captures, four study matrices). Every number here was measured on the original
+**Status:** living document (83 captures, five study matrices). Every number here was measured on the original
 `stbc.exe` (GOG release, 2002-04-09 build) by the unattended oracle in this
 repo, and every claim names the capture in [`results/`](results/) that backs
 it. Nothing is taken from disassembly or memory; where a reverse-engineered
@@ -432,6 +432,9 @@ cadences). File = the capture whose raw rows are the reference.
 | A2 | Kessok AI pass: close to ~47 GU at ≤4.2 GU/s, break away at 4.6 GU/s to ~123 GU, turn at 0.40 rad/s; identical at all three difficulties | ±5 GU | `ai_kessok_vs_parked_galaxy_*` |
 | A3 | AI difficulty changes weapons use, not motion: LOW never fires torpedoes | — | `ai_kessok_vs_parked_galaxy_low` |
 | A4 | AI runs impulse engines at 125 % power (speed = 1.25 × MaxSpeed) | exact | `ai_*` |
+| A5 | AI cannot catch a faster target: head-on pass to ~23 GU then a losing stern chase | ±5 GU | `ai_kessok_vs_moving_galaxy_med` |
+| A6 | AI against a circling target closes monotonically and attacks rear/port | — | `ai_kessok_vs_circling_galaxy_med` |
+| A7 | BoP AI: closest 37 GU, 7.75 GU/s, 0.72 rad/s | ±5 % | `ai_bop_vs_parked_galaxy_med` |
 | F1 | single-fire phaser systems fire one bank at a time, round-robin on exhaustion; Galaxy quantum 66, Sovereign 80 | exact / ±1 bank | `phaser_{galaxy,sovereign}_front_57` |
 | F2 | windup and pulse period are game-time constants (unchanged at time scale 0.5) | ±0.1 s | `phaser_high_front_57_timescale05` |
 | P3 | bolt damage independent of range (40–150 GU) and of emitter power setting | ±2 % | `pulse_warbird_front_*` |
@@ -454,10 +457,12 @@ cadences). File = the capture whose raw rows are the reference.
 * Warp: entry/exit velocity, in-system vs set-to-set.
 * Shield regen vs a reactor that cannot supply the generator's
   `NormalPowerPerSecond` (only the generator's own power-wanted was varied).
-* AI: cloaking attackers (the Warbird AI run crashed the game — the
-  CloakAttack branch needs its own investigation); AI versus a *moving* or
-  *shooting* player; the engine's `LogAITree` (arming it after the AI exists
-  kills the process; it must be armed at boot).
+* AI: the Warbird AI crashes the game (Bird of Prey, also a cloaker, does
+  not); AI versus a player who both moves *and* shoots; the engine's
+  `ArtificialIntelligence_LogAITree` is unusable here (armed after an AI
+  exists it kills the process, armed at boot it stalls the load).
+* Whether the Galaxy's own fire in the shooting run ever reached the
+  Kessok's shields (attacker faces are not sampled yet).
 
 ---
 
@@ -509,7 +514,24 @@ attacks from **above** (top face −3619, front −1854), torpedo duty only
 12 %, and does 1 724 hull damage in 90 s — single-fire phasers (§2.3) make
 Federation AIs slow killers.
 
-### 11.4 Engine facts the AI relies on
+### 11.4 Against a player who moves or shoots (`ai_kessok_vs_*_galaxy_med`)
+
+| player behaviour | what the AI did | Galaxy shield / hull damage | Kessok hull damage |
+|---|---|---|---|
+| runs straight at 6.3 GU/s | head-on pass to **23 GU** at t=18 s, then a stern chase it cannot win (4.6 < 6.3): range 54 → 237 GU by t=90 s, phasers on the rear face only | front 4413, rear 3591 / 1576 | 0 |
+| circles (half impulse, full yaw) | closes steadily 150 → 66 GU over 90 s, works the **rear and port** faces, hits the warp core and aft tubes | rear 3629, port 2546 / 3365 | 0 |
+| parked, fires back (one phaser bank + photons, no manoeuvring) | same pass pattern as against a parked target; the Galaxy's fire never got through the Kessok's 8500-point front face | all faces / **15 000 — destroyed at t = 89 s** | **0** |
+
+### 11.5 Bird of Prey (`ai_bop_vs_parked_galaxy_med`)
+
+`NonFedAttack` with cloak available: reaction 4.0 s, pulse cannons and
+torpedoes from 150 GU, closest approach **36.9 GU**, speed **7.75 GU/s**
+(1.25 × 6.2), turns at **0.72 rad/s** (hardpoint max 0.5), all six faces
+down and hull −5531 in 90 s. The Warbird AI crashes the game reproducibly
+(jump to an invalid address shortly after the sim starts, `CloakAttack`
+branch) — open.
+
+### 11.6 Engine facts the AI relies on
 
 * engines at **125 % power** (§7.1) — every AI run peaks at exactly 1.25 × MaxSpeed;
 * turns commanded through the **direct** angular API (0.40 rad/s on a

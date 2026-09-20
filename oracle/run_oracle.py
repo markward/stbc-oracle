@@ -279,9 +279,12 @@ def run(oracle_dir: Path, params: dict, timeout_s: float, shot: Path | None,
                 proc.kill()
     result = parse_output(oracle_dir)
     tree = oracle_dir / "AITree.txt"
-    if params.get("ai_log") and tree.exists():
-        result["ai_tree_log"] = tree.read_text(errors="replace")
-        tree.unlink()
+    if tree.exists():
+        try:
+            result["ai_tree_log"] = tree.read_text(errors="replace")
+            tree.unlink()
+        except OSError:
+            pass
     result["elapsed_s"] = round(time.time() - t0, 1)
     result["params"] = params
     result["timed_out"] = not done
@@ -304,7 +307,9 @@ def main(argv=None) -> int:
     ap.add_argument("--gen-frac", type=float, default=-1.0, help="target shield generator condition fraction")
     ap.add_argument("--ai", action="store_true", help="leave the Quick Battle AI driving the attacker")
     ap.add_argument("--ai-level", type=float, default=0.5, help="BasicAttack difficulty 0.0/0.5/1.0")
-    ap.add_argument("--ai-log", action="store_true", help="engine AI tree log to <oracle>/AITree.txt")
+    ap.add_argument("--ai-log", action="store_true", help="(non-functional: ArtificialIntelligence_LogAITree stalls the game even when armed at boot)")
+    ap.add_argument("--target-motion", default="none", choices=["none", "impulse", "yaw"])
+    ap.add_argument("--target-fire", action="store_true", help="player ship shoots back at act time")
     ap.add_argument("--motion", default="none", choices=["none", "impulse", "impulse125", "impulse200", "impulse_power125", "coast", "yaw", "pitch", "roll", "yawdirect"])
     ap.add_argument("--range-gu", type=float, default=57.0)
     ap.add_argument("--angle-deg", type=float, default=0.0, help="attacker bearing: 0 ahead, 90 starboard, 180 astern")
@@ -339,6 +344,7 @@ def main(argv=None) -> int:
         "time_scale": a.time_scale, "target_alert": a.target_alert, "tractor_mode": a.tractor_mode,
         "shield_power": a.shield_power, "gen_frac": a.gen_frac,
         "ai": 1 if a.ai else 0, "ai_level": a.ai_level, "ai_log": 1 if a.ai_log else 0,
+        "target_motion": a.target_motion, "target_fire": 1 if a.target_fire else 0,
     }
     result = run(a.oracle_dir, params, a.timeout, a.shot, a.shot_at)
     print("hook markers:", ", ".join(k[3:] for k in result["hook"]))
