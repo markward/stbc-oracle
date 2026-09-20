@@ -47,6 +47,7 @@ WINDOW_TITLE = "Bridge Commander"
 IN_CFG = "oracle_in.cfg"
 OUT_CFG = "oracle_out.cfg"
 BOOT_CFG = "oracle_boot.cfg"
+FREEZE_S = 20.0          # grace beyond the scenario's own length
 
 
 # --- deploy -------------------------------------------------------------------
@@ -247,6 +248,7 @@ def run(oracle_dir: Path, params: dict, timeout_s: float, shot: Path | None,
     focused = 0
     done = False
     shot_taken = False
+    last_boot_mtime, last_boot_change = None, time.time()
     try:
         while time.time() - t0 < timeout_s:
             time.sleep(0.5)
@@ -263,6 +265,22 @@ def run(oracle_dir: Path, params: dict, timeout_s: float, shot: Path | None,
                 if _find_window() == _user32.GetForegroundWindow():
                     press_escape()
             sec = parse_cfg_section(oracle_dir / OUT_CFG, "OracleOut")
+            # Freeze detector: an uncaught in-game exception pops the TG debug
+            # console and stops the world.  Once the mission has started, if
+            # oracle_boot.cfg stops changing for longer than the scenario
+            # itself plus FREEZE_S, kill rather than wait for the full timeout.
+            boot_path = oracle_dir / BOOT_CFG
+            if boot_path.exists():
+                m = boot_path.stat().st_mtime
+                if m != last_boot_mtime:
+                    last_boot_mtime, last_boot_change = m, time.time()
+                boot = parse_cfg_section(boot_path, "OracleBoot")
+                started = any(k.endswith("timers_armed") for k in boot)
+                finished = any(k.endswith("flushed") for k in boot)
+                budget = FREEZE_S + float(params.get("duration", 0)) + float(params.get("settle_s", 0)) + float(params.get("fire_at", 0))
+                if started and not finished and time.time() - last_boot_change > budget:
+                    print("freeze suspected (no progress) - killing", flush=True)
+                    break
             if shot is not None and time.time() - t0 >= shot_at_s and not shot_taken:
                 shot_taken = capture(shot)
             if sec.get("done") == "1":

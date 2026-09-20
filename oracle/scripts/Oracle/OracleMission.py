@@ -472,13 +472,15 @@ def _act_motion():
         g_pAttacker.SetImpulse(1.0, fwd, App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
     elif m in ("warpset", "warpset_moving"):
         # Set-to-set warp into Vesuvi5 (created on demand), the AI Warp.py way.
-        # __import__ exactly as QuickBattle.ChangeRegion does it: a plain
-        # `import Systems.Vesuvi.Vesuvi5` from inside the Oracle package raises
-        # "No module named Vesuvi5" under Python 1.5's relative-import rules,
-        # and an uncaught exception freezes the game on its debug console.
+        # Run the import in QuickBattle's own namespace: from inside the
+        # Oracle package the same string resolves package-relative under
+        # Python 1.5 and fails ("No module named Vesuvi5"), and the TG debug
+        # console pops on that ImportError even though it is caught.
         try:
-            pModule = __import__("Systems.Vesuvi.Vesuvi5")
-            pModule = pModule.Vesuvi.Vesuvi5
+            import QuickBattle.QuickBattle
+            QB = QuickBattle.QuickBattle
+            exec "_oracle_dest = __import__('Systems.Vesuvi.Vesuvi5')" in QB.__dict__
+            pModule = QB.__dict__["_oracle_dest"]
             if App.g_kSetManager.GetSet("Vesuvi5") is None:
                 pModule.Initialize()
             _log.mark("dest_set", str(App.g_kSetManager.GetSet("Vesuvi5")))

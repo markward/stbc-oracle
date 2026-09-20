@@ -476,8 +476,13 @@ cadences). File = the capture whose raw rows are the reference.
   GU/s in every mode).
 * Collision damage split per hull pairing (BoP → Kessok: 1417 to the
   Kessok, BoP survived at 5.2 GU/s — no clean constant).
-* Set-to-set warp (`WarpSequence_Create` into a second system): harness
-  modes `warpset` / `warpset_moving` are written, not yet run.
+* Set-to-set warp (`WarpSequence_Create` into a second system). Harness
+  modes `warpset` / `warpset_moving` exist; the destination system
+  (`Systems.Vesuvi.Vesuvi5`) imports and initialises when the import is run
+  in `QuickBattle`'s namespace, but `WarpSequence_Create(ship, "Vesuvi5",
+  5.0, "Player Start").Play()` halts the game on its debug console with no
+  marker after it. Not pursued further (two freezes on the user's screen);
+  the in-system half (§7.3) is measured.
 * Shield regen vs a reactor that cannot supply the generator's
   `NormalPowerPerSecond` (only the generator's own power-wanted was varied).
 * AI: the Warbird AI crashes the game (Bird of Prey, also a cloaker, does
