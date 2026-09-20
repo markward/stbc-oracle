@@ -1,0 +1,10 @@
+[project]
+name = "stbc-oracle"
+version = "0.1.0"
+description = "Drive the original Star Trek: Bridge Commander (stbc.exe) unattended as a measurement oracle for engine reimplementations"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+stbc-oracle = "oracle.run_oracle:main"
+stbc-oracle-study = "oracle.study:main"
