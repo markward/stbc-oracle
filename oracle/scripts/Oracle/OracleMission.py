@@ -71,6 +71,11 @@ def _read_inputs():
     P["sample_dt"]    = _getf("sample_dt", 0.03)
     P["disable_target_weapons"] = int(_getf("disable_target_weapons", 1))
     P["rows"]         = _gets("rows", "abc")            # which row types to emit
+    P["torp_type"]    = int(_getf("torp_type", -1))     # TorpedoSystem.SetAmmoType index (-1 leave)
+    P["pulse_power"]  = int(_getf("pulse_power", -1))   # EnergyWeapon.SetPowerSetting on pulse emitters
+    P["time_scale"]   = _getf("time_scale", 1.0)        # UtopiaModule.SetTimeScale at takeover
+    P["target_alert"] = _gets("target_alert", "red")    # red|yellow|green
+    P["tractor_mode"] = _gets("tractor_mode", "hold")   # hold|tow|pull|push
     for k in P.keys():
         _log.meta("in_" + k, P[k])
 
@@ -113,8 +118,16 @@ def _still(pShip):
         _log.mark("still_error", _log.exc())
 
 def _red_alert(pShip):
+    _alert(pShip, "red")
+
+def _alert(pShip, level):
     try:
-        pShip.SetAlertLevel(App.ShipClass.RED_ALERT)
+        if level == "green":
+            pShip.SetAlertLevel(App.ShipClass.GREEN_ALERT)
+        elif level == "yellow":
+            pShip.SetAlertLevel(App.ShipClass.YELLOW_ALERT)
+        else:
+            pShip.SetAlertLevel(App.ShipClass.RED_ALERT)
     except:
         _log.mark("alert_error", _log.exc())
 
@@ -126,6 +139,8 @@ def _weapon_system(pShip):
         return pShip.GetPulseWeaponSystem()
     if w == "torpedo":
         return pShip.GetTorpedoSystem()
+    if w == "tractor":
+        return pShip.GetTractorBeamSystem()
     return None
 
 def _emitters(pShip):
@@ -143,6 +158,8 @@ def _emitters(pShip):
             b = App.PulseWeapon_Cast(raw)
         elif P["weapon"] == "torpedo":
             b = App.TorpedoTube_Cast(raw)
+        elif P["weapon"] == "tractor":
+            b = App.EnergyWeapon_Cast(raw)
         if b is not None:
             out.append(b)
     return out
@@ -325,10 +342,17 @@ def _OracleStartSimulation2(pObject, pEvent):
         az = r * math.sin(e)
         n = (ax * ax + ay * ay + az * az) ** 0.5
         fx, fy, fz = -ax / n, -ay / n, -az / n
+        # Up must be perpendicular to forward or the engine re-derives the
+        # frame and the nose ends up off the target (elev 45 fired only the
+        # dorsal pair).  Gram-Schmidt world-up against forward.
         if abs(fz) > 0.99:
-            ux, uy, uz = 0.0, 1.0, 0.0
+            wx, wy, wz = 0.0, 1.0, 0.0
         else:
-            ux, uy, uz = 0.0, 0.0, 1.0
+            wx, wy, wz = 0.0, 0.0, 1.0
+        d = wx * fx + wy * fy + wz * fz
+        ux, uy, uz = wx - d * fx, wy - d * fy, wz - d * fz
+        un = (ux * ux + uy * uy + uz * uz) ** 0.5
+        ux, uy, uz = ux / un, uy / un, uz / un
         _place(g_pTarget, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0)
         _place(g_pAttacker, ax, ay, az, fx, fy, fz, ux, uy, uz)
         _still(g_pTarget)
@@ -338,8 +362,22 @@ def _OracleStartSimulation2(pObject, pEvent):
             pPM.UpdateObject(g_pTarget)
             pPM.UpdateObject(g_pAttacker)
         _red_alert(g_pAttacker)
+        if P["target_alert"] != "red":
+            _alert(g_pTarget, P["target_alert"])
         if P["disable_target_weapons"]:
             _zero_weapons(g_pTarget)
+        if P["torp_type"] >= 0:
+            try:
+                g_pAttacker.GetTorpedoSystem().SetAmmoType(P["torp_type"])
+                _log.mark("torp_type", "%d -> current %d" % (P["torp_type"], g_pAttacker.GetTorpedoSystem().GetAmmoTypeNumber()))
+            except:
+                _log.mark("torp_type_error", _log.exc())
+        if P["time_scale"] != 1.0:
+            try:
+                App.g_kUtopiaModule.SetTimeScale(P["time_scale"])
+                _log.mark("time_scale", str(P["time_scale"]))
+            except:
+                _log.mark("time_scale_error", _log.exc())
         g_banks = _emitters(g_pAttacker)
         g_subs = _all_subsystems(g_pTarget)
         _log.mark("placed", "banks=%d subs=%d range=%.2f" % (len(g_banks), len(g_subs), _range()))
@@ -376,6 +414,16 @@ def _act_weapon():
     if P["charge"] >= 0.0 and P["weapon"] != "torpedo":
         for b in g_banks:
             b.SetChargeLevel(P["charge"])
+    if P["weapon"] == "pulse" and P["pulse_power"] >= 0:
+        for b in g_banks:
+            try:
+                b.SetPowerSetting(P["pulse_power"])
+            except:
+                _log.mark("pulse_power_error", _log.exc())
+    if P["weapon"] == "tractor":
+        modes = {"hold": App.TractorBeamSystem.TBS_HOLD, "tow": App.TractorBeamSystem.TBS_TOW,
+                 "pull": App.TractorBeamSystem.TBS_PULL, "push": App.TractorBeamSystem.TBS_PUSH}
+        ps.SetMode(modes.get(P["tractor_mode"], App.TractorBeamSystem.TBS_HOLD))
     g_pAttacker.SetTarget(g_pTarget.GetName())   # takes a NAME, not an object
     ps.StartFiring(g_pTarget)
 
@@ -444,9 +492,15 @@ def OnSample(pObject, pEvent):
                     ch.append(-1.0)
                 fi.append(int(b.IsFiring()))
             hull = g_pTarget.GetHull().GetCondition()
-            _log.row("a t=%.4f f=%d c=%s fi=%s sh=%s h=%.1f" % (
+            try:
+                ah = g_pAttacker.GetHull().GetCondition()
+            except:
+                ah = -1.0
+            tv = g_pTarget.GetVelocityTG()
+            tsp = (tv.x * tv.x + tv.y * tv.y + tv.z * tv.z) ** 0.5
+            _log.row("a t=%.4f f=%d c=%s fi=%s sh=%s h=%.1f ah=%.1f tsp=%.4f tp=%s" % (
                 t, fr, _fmt_list(ch, "%.3f"), _fmt_list(fi, "%d"),
-                _fmt_list(_shields(g_pTarget), "%.1f"), hull))
+                _fmt_list(_shields(g_pTarget), "%.1f"), hull, ah, tsp, _p3(g_pTarget.GetWorldLocation())))
         if string.find(P["rows"], "b") >= 0:
             conds = []
             for s in g_subs:

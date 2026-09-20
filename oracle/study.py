@@ -20,7 +20,8 @@ BASE = dict(attacker="KessokHeavy", target="Galaxy", weapon="phaser", motion="no
             range_gu=57.0, angle_deg=0.0, elev_deg=0.0, intensity=2, charge=-1.0,
             power_wanted=-1.0, shield_face=-1, shield_frac=1.0, shields_off=0,
             settle_s=2.0, fire_at=1.0, duration=12.0, sample_dt=0.03,
-            disable_target_weapons=1, rows="ab")
+            disable_target_weapons=1, rows="ab", torp_type=-1, pulse_power=-1,
+            time_scale=1.0, target_alert="red", tractor_mode="hold")
 
 MATRIX: dict[str, dict] = {
     # --- phasers: intensity table -------------------------------------------
@@ -66,6 +67,29 @@ MATRIX: dict[str, dict] = {
     "motion_galaxy_yaw":     dict(attacker="Galaxy", weapon="none", motion="yaw", rows="c", range_gu=300.0, duration=15.0),
     "motion_bop_impulse":    dict(attacker="BirdOfPrey", weapon="none", motion="impulse", rows="c", range_gu=300.0, duration=20.0),
     "motion_bop_yaw":        dict(attacker="BirdOfPrey", weapon="none", motion="yaw", rows="c", range_gu=300.0, duration=15.0),
+    # --- matrix 2: the bible's open items -----------------------------------
+    "phaser_high_elev45_57":  dict(elev_deg=45.0),
+    "phaser_high_elev60_57":  dict(elev_deg=60.0),
+    "phaser_high_elev75_57":  dict(elev_deg=75.0),
+    "phaser_galaxy_front_57":    dict(attacker="Galaxy"),
+    "phaser_sovereign_front_57": dict(attacker="Sovereign"),
+    "torpedo_sovereign_quantum_57": dict(attacker="Sovereign", weapon="torpedo", torp_type=1, settle_s=8.0, duration=20.0),
+    "torpedo_warbird_front_57":     dict(attacker="Warbird", weapon="torpedo", duration=20.0),
+    "torpedo_galaxy_front_57_noshields": dict(attacker="Galaxy", weapon="torpedo", duration=20.0, shields_off=1),
+    "pulse_warbird_front_40_low":  dict(attacker="Warbird", weapon="pulse", range_gu=40.0, pulse_power=0),
+    "pulse_warbird_front_40_high": dict(attacker="Warbird", weapon="pulse", range_gu=40.0, pulse_power=2),
+    "pulse_warbird_front_100":     dict(attacker="Warbird", weapon="pulse", range_gu=100.0),
+    "pulse_warbird_front_150":     dict(attacker="Warbird", weapon="pulse", range_gu=150.0),
+    "phaser_high_front_57_timescale05": dict(time_scale=0.5, duration=8.0),
+    "regen_red_face50":    dict(weapon="none", shield_face=0, shield_frac=0.5, duration=20.0),
+    "regen_yellow_face50": dict(weapon="none", shield_face=0, shield_frac=0.5, duration=20.0, target_alert="yellow"),
+    "regen_green_face50":  dict(weapon="none", shield_face=0, shield_frac=0.5, duration=20.0, target_alert="green"),
+    "ram_kessok_galaxy":  dict(weapon="none", motion="impulse", rows="abc", range_gu=30.0, duration=15.0),
+    "ram_galaxy_galaxy":  dict(attacker="Galaxy", weapon="none", motion="impulse", rows="abc", range_gu=30.0, duration=15.0),
+    "ram_bop_galaxy":     dict(attacker="BirdOfPrey", weapon="none", motion="impulse", rows="abc", range_gu=30.0, duration=15.0),
+    "tractor_galaxy_hold": dict(attacker="Galaxy", weapon="tractor", tractor_mode="hold", rows="abc", range_gu=20.0, duration=15.0),
+    "tractor_galaxy_tow":  dict(attacker="Galaxy", weapon="tractor", tractor_mode="tow", rows="abc", range_gu=20.0, duration=15.0),
+    "tractor_galaxy_push": dict(attacker="Galaxy", weapon="tractor", tractor_mode="push", rows="abc", range_gu=20.0, duration=15.0),
 }
 
 

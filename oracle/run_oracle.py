@@ -159,11 +159,11 @@ def parse_row(line: str) -> dict:
         if "=" not in tok:
             continue
         k, v = tok.split("=", 1)
-        if k in ("t", "h", "sp"):
+        if k in ("t", "h", "sp", "ah", "tsp"):
             d[k] = float(v)
         elif k == "f":
             d[k] = int(v)
-        elif k in ("c", "sh", "s", "p", "v", "w", "fw"):
+        elif k in ("c", "sh", "s", "p", "v", "w", "fw", "tp"):
             d[k] = _floats(v)
         elif k == "fi":
             d[k] = [int(x) for x in v.split(",") if x != ""]
@@ -288,7 +288,12 @@ def main(argv=None) -> int:
                     default=Path(os.environ.get("DAUNTLESS_ORACLE_DIR", DEFAULT_ORACLE_DIR)))
     ap.add_argument("--attacker", default="KessokHeavy")
     ap.add_argument("--target", default="Galaxy")
-    ap.add_argument("--weapon", default="phaser", choices=["phaser", "pulse", "torpedo", "none"])
+    ap.add_argument("--weapon", default="phaser", choices=["phaser", "pulse", "torpedo", "tractor", "none"])
+    ap.add_argument("--torp-type", type=int, default=-1)
+    ap.add_argument("--pulse-power", type=int, default=-1)
+    ap.add_argument("--time-scale", type=float, default=1.0)
+    ap.add_argument("--target-alert", default="red", choices=["red", "yellow", "green"])
+    ap.add_argument("--tractor-mode", default="hold", choices=["hold", "tow", "pull", "push"])
     ap.add_argument("--motion", default="none", choices=["none", "impulse", "coast", "yaw", "pitch", "roll"])
     ap.add_argument("--range-gu", type=float, default=57.0)
     ap.add_argument("--angle-deg", type=float, default=0.0, help="attacker bearing: 0 ahead, 90 starboard, 180 astern")
@@ -319,7 +324,8 @@ def main(argv=None) -> int:
         "shields_off": 1 if a.shields_off else 0,
         "settle_s": a.settle_s, "fire_at": a.fire_at, "duration": a.duration,
         "sample_dt": a.sample_dt, "disable_target_weapons": 0 if a.keep_target_weapons else 1,
-        "rows": a.rows,
+        "rows": a.rows, "torp_type": a.torp_type, "pulse_power": a.pulse_power,
+        "time_scale": a.time_scale, "target_alert": a.target_alert, "tractor_mode": a.tractor_mode,
     }
     result = run(a.oracle_dir, params, a.timeout, a.shot, a.shot_at)
     print("hook markers:", ", ".join(k[3:] for k in result["hook"]))

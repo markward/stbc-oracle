@@ -1,6 +1,6 @@
 # Star Trek: Bridge Commander — measured behaviour bible
 
-**Status:** living document. Every number here was measured on the original
+**Status:** living document (57 captures, two study matrices). Every number here was measured on the original
 `stbc.exe` (GOG release, 2002-04-09 build) by the unattended oracle in this
 repo, and every claim names the capture in [`results/`](results/) that backs
 it. Nothing is taken from disassembly or memory; where a reverse-engineered
@@ -83,7 +83,10 @@ lands as four quanta 31–62 ms apart, then ~0.35 s of nothing.
 
 * **Windup: 1.156 s** (70 ticks) from `IsFiring` going true to the first
   quantum landing — identical in all 20 beam runs regardless of ship,
-  intensity, range or face.
+  intensity, range or face. It is a **game-time** constant, not a frame
+  count: at `SetTimeScale(0.5)` the windup is still 1.11 s of game time
+  (142 frames) and the quanta still arrive every ~0.53 s of game time
+  (`phaser_high_front_57_timescale05`).
 * **Discharge** while the beam is up: HIGH/MED **1.0 charge/s**, LOW
   **0.35/s** (7 → 0 in 7.0 s at HIGH; LOW still had charge at 12 s). A bank
   stops the instant charge reaches 0.
@@ -92,12 +95,25 @@ lands as four quanta 31–62 ms apart, then ~0.35 s of nothing.
 * Kessok Heavy at HIGH: 4 beams × 7 s ⇒ **~5 400 damage per full volley**
   (5 469 / 5 494 / 5 421 / 5 505 / 5 423 measured across five geometries).
 
-### 2.3 Which banks fire
+### 2.3 Which banks fire; single-fire systems
 
 Only banks whose arc contains the target fire; for the Kessok Heavy at any
-bearing the four forward beams bear and the dorsal/ventral pairs do not.
-The Warbird has one beam. (`ws_SingleFire` is 0 for these systems; the
-Galaxy's phaser system is single-fire — not yet measured as attacker.)
+bearing or elevation the four forward beams bear (all four at elevations
+45/60/75°, `phaser_high_elev*_57`) and the dorsal/ventral pairs do not. The
+Warbird has one beam.
+
+Federation phaser systems are **single-fire** (`Phasers.SetSingleFire(1)`):
+one bank fires until its charge is exhausted, then the next bank starts,
+round-robin — never two at once.
+
+| Ship | bank `MaxDamage` | quantum per 0.53 s | sequence | file |
+|---|---|---|---|---|
+| Galaxy | 250 | **66** | bank 5 for 5.5 s, then bank 6, then bank 1 | `phaser_galaxy_front_57` |
+| Sovereign | 300 | **80** | bank 6 for 5.9 s, then bank 5 | `phaser_sovereign_front_57` |
+
+So a Galaxy's sustained phaser output is ~125/s (one 250-point bank at
+0.5), which is why a Galaxy-vs-Galaxy duel is slow: 1112 damage in the
+12 s window.
 
 ---
 
@@ -114,6 +130,12 @@ Time from `IsFiring` to first hit at 40 GU: 0.66–0.91 s (bolt flight
 included). Bolts deliver the same amount to hull when shields are down as to
 a face when they are up (Warbird 1600 either way).
 
+**No range falloff and no power-setting effect on bolts:** Warbird bursts
+at 40 / 100 / 150 GU are 1501 / 1514 / 1526, and `EnergyWeapon.SetPowerSetting`
+LOW or HIGH on the emitters leaves the burst at 1501
+(`pulse_warbird_front_{40_low,40_high,100,150}`). (The RE says the setting
+scales the per-shot charge *cost*; that was not visible within one burst.)
+
 ---
 
 ## 4. Torpedoes
@@ -127,10 +149,17 @@ whole; no intensity or range term. Tubes fire in sequence
 | Photon (Galaxy) | **500** | 19 GU/s | 2.9 s | 0.15 | `torpedo_galaxy_front_57` |
 | Photon2 (Sovereign) | **550** | — | 2.9 s | — | `torpedo_sovereign_front_57` |
 | Positron (Kessok Heavy) | **2200** | 3.8 GU/s | **13.3 s** | 3.0 (40 s guidance) | `torpedo_kessok_front_57` |
+| Quantum (Sovereign, ammo type 1) | **900** | 22 GU/s | 2.4 s | 0.15 | `torpedo_sovereign_quantum_57` |
+| Klingon "Adv. Photon" (Warbird) | **1400** | 10 GU/s | ~5.5 s | 0.2 | `torpedo_warbird_front_57` |
 
-Reference values for types not yet fired: Quantum 900 @ 22 GU/s, Antimatter
-440 @ 35 GU/s, Klingon "Adv. Photon" 1400 @ 10 GU/s
-(`scripts/Tactical/Projectiles/*.py`).
+Switching ammo type (`TorpedoSystem.SetAmmoType`) **unloads the tubes**; the
+Sovereign's `ReloadDelay` is 40 s, so the first quantum salvo needs ~45 s
+after the switch. Reference for the type not fired: Antimatter 440 @ 35 GU/s.
+
+Photon torpedoes on a bare hull (`torpedo_galaxy_front_57_noshields`): four
+500-point hits gave the hull 2000 **and** each subsystem in the footprint
+1725–2000 (sensor array, four forward tubes) — the §6.1 rule applies to
+torpedoes as to beams.
 
 Two Positron torpedoes on an **unshielded** Galaxy (15 000 hull) killed it:
 the hull went to 270 and the death sequence zeroed every subsystem
@@ -152,10 +181,13 @@ geometry, not by the target's orientation to the attacker's bow:
 | 90° starboard | index 5 (max 4000) — **starboard is face 5** | `phaser_high_stbd_57` |
 | astern | index 1 (max 4000) — **rear is face 1** | `phaser_high_aft_57` |
 | directly below | index 3 (max 4000) — **bottom is face 3** | `phaser_high_bottom_57` |
-| directly above | *not measured*: the attacker did not fire from 89° elevation (arc/placement issue in the harness) | `phaser_high_top_57` |
+| 45° / 60° / 75° above | index 2 (max 4000) — **top is face 2** | `phaser_high_elev{45,60,75}_57` |
 
-Index map established so far: 0 front, 1 rear, 3 bottom, 5 right; by
-elimination 2/4 are top/left (order unconfirmed).
+**Index map: 0 front, 1 rear, 2 top, 3 bottom, 4 port (by elimination),
+5 starboard.** From above, the hit footprint walks aft with elevation:
+shield generator at 45°, warp core + aft tubes + centre impulse at 60–75°.
+(`phaser_high_top_57` at 89° is void: an earlier harness bug left the
+attacker's nose off the target.)
 
 ### 5.2 Absorption ramp (pass-through)
 
@@ -194,6 +226,8 @@ Each face regains **6.15 points every 0.656 s** (≈ 9.4/s per face, Galaxy,
 `ShieldGenerator` at full power) while below max, starting immediately —
 even a zeroed face is back to ~105 after 11 s (`*_noshields` runs). Regen
 ticks are visible as −6.1/−6.2 "negative damage" steps in every capture.
+The rate is the same at **red, yellow and green alert** (a face preset to
+50 % climbs at 9.2–9.5/s in all three, `regen_{red,yellow,green}_face50`).
 
 ---
 
@@ -276,6 +310,37 @@ e-fold per second (0.92 @ 1.5 s, 0.51 @ 2.1 s, 0.20 @ 3.0 s;
 Model check: Galaxy @ 4 s → 6.3 − 1.5·e^{−(4−3.2)} = 5.63 (measured 5.635);
 BoP yaw @ 1 s → 0.5 − 0.35·e^{−(1−0.43)} = 0.302 (measured 0.304).
 
+### 7.3 Collisions — what mass is for
+
+Ramming runs (attacker at full impulse into the parked Galaxy from 30 GU,
+`ram_*`): the bounce is a **perfectly elastic collision with the hardpoint
+masses**, and the damage is proportional to the impulse exchanged.
+
+| Rammer (mass) → Galaxy (120) | speed at impact | Galaxy speed after (measured / elastic model) | rammer speed after | damage to Galaxy | damage to rammer |
+|---|---|---|---|---|---|
+| Kessok Heavy (500) | 3.70 | **5.97** / 5.97 | 2.55 (still under power) / 2.27 | **5870** | 1789 |
+| Galaxy (120) | 6.21 | **5.88–6.21** / 6.21 | 0.33 / 0 | **6089** | 6089 |
+| Bird of Prey (45) | 6.17 | **3.36** / 3.36 | 2.80 (rebound) / −2.80 | **3527** | 4000 (= its whole hull) |
+
+Elastic model: `v_target' = 2 mₐ v / (mₐ + mₜ)`, `v_attacker' = (mₐ − mₜ) v / (mₐ + mₜ)`.
+Damage to the rammed Galaxy is **8.2 × J** with `J = 2 μ v` (μ the reduced
+mass): 744 → 6089, 716 → 5870, 404 → 3527. The rammer's own damage per unit
+impulse depends on the hull (Galaxy 8.2, Kessok 2.5, BoP ≥ 9.9) — the RE
+puts collision damage on the contact impulse with a per-contact clamp, so
+that constant is contact-geometry dependent; measure it per hull. Collision
+damage **bypasses shields entirely** (every face unchanged in all three
+runs) and a rammer left under power hits again every ~3 s (Kessok: 5870,
+4487, 4693 → Galaxy destroyed).
+
+### 7.4 Tractor beam
+
+With a Galaxy's tractor system engaged on a parked Kessok Heavy at 20 GU
+(`tractor_galaxy_{hold,tow,push}`) the beam fires (one emitter) and the
+target creeps toward the projector at **0.007 GU/s**; the projector does
+not move. `SetMode` hold / tow / push made **no measurable difference** in
+12 s. Treat the tractor as unmeasured beyond "it exists and barely moves a
+500-mass hull"; a lighter target and longer window are needed.
+
 ---
 
 ## 8. Things measured that were *not* as documented elsewhere
@@ -323,19 +388,25 @@ cadences). File = the capture whose raw rows are the reference.
 | M2 | angular rate follows the same law with MaxAngularAccel / MaxAngularVelocity, identical on yaw/pitch/roll | ±2 % | `motion_*_{yaw,pitch,roll}` |
 | M3 | stopping follows the same law towards 0 | ±5 % | `motion_kessok_coast` |
 | M4 | mass / rotational inertia do not affect M1–M3 | — | Galaxy vs Kessok vs BoP |
+| F1 | single-fire phaser systems fire one bank at a time, round-robin on exhaustion; Galaxy quantum 66, Sovereign 80 | exact / ±1 bank | `phaser_{galaxy,sovereign}_front_57` |
+| F2 | windup and pulse period are game-time constants (unchanged at time scale 0.5) | ±0.1 s | `phaser_high_front_57_timescale05` |
+| P3 | bolt damage independent of range (40–150 GU) and of emitter power setting | ±2 % | `pulse_warbird_front_*` |
+| T4 | quantum 900, Klingon 1400; ammo switch unloads tubes (Sovereign reload 40 s) | exact | `torpedo_sovereign_quantum_57`, `torpedo_warbird_front_57` |
+| S5 | regen rate identical at red/yellow/green alert | ±5 % | `regen_*_face50` |
+| C1 | collision is elastic with hardpoint masses (post-impact speeds) | ±3 % | `ram_*` |
+| C2 | rammed-ship damage = 8.2 × 2μv; shields untouched | ±10 % | `ram_*` |
 
 ---
 
 ## 10. Not yet measured / open
 
-* Top-elevation facing (the 89° run did not fire) — re-run with the attacker
-  yawed rather than pitched onto the target.
-* Galaxy/Sovereign as *attacker* (single-fire phaser systems, quantum
-  torpedoes): needs the harness's `player=attacker` mode.
-* Pulse weapons at LOW/HIGH power settings; pulse falloff with range.
-* Whether the 0.53 s pulse and 1.16 s windup are frame-count constants
-  (32 / 70 ticks) or time constants — needs a run at a different frame rate.
-* Collision damage, tractor beams, warp; what mass and rotational inertia
-  *do* affect.
-* Shield regen dependence on generator power / alert level.
-* Torpedo splash radius (`DamageRadiusFactor`) vs subsystem footprint.
+* Tractor beam modes and force (§7.4) — needs a light target and a longer
+  window.
+* Collision damage to the *rammer* per hull; whether the 8.2 × J constant
+  holds for non-Galaxy targets.
+* Pulse `PowerSetting`: charge cost per shot (needs `c=` charge rows on
+  pulse emitters over several bursts).
+* Warp: entry/exit velocity, in-system vs set-to-set.
+* Shield regen vs generator power allocation and generator damage.
+* Torpedo splash radius (`DamageRadiusFactor`) vs footprint size.
+* Face 4 (port) confirmation by a 270° run.
