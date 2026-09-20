@@ -167,8 +167,10 @@ def parse_row(line: str) -> dict:
             d[k] = _floats(v)
         elif k == "fi":
             d[k] = [int(x) for x in v.split(",") if x != ""]
-        elif k in ("tgt", "fire"):
+        elif k in ("tgt", "fire", "set"):
             d[k] = v
+        elif k == "isw":
+            d[k] = int(v)
     return d
 
 
@@ -308,9 +310,11 @@ def main(argv=None) -> int:
     ap.add_argument("--ai", action="store_true", help="leave the Quick Battle AI driving the attacker")
     ap.add_argument("--ai-level", type=float, default=0.5, help="BasicAttack difficulty 0.0/0.5/1.0")
     ap.add_argument("--ai-log", action="store_true", help="(non-functional: ArtificialIntelligence_LogAITree stalls the game even when armed at boot)")
-    ap.add_argument("--target-motion", default="none", choices=["none", "impulse", "yaw"])
+    ap.add_argument("--target-motion", default="none", choices=["none", "impulse", "yaw", "warp"])
     ap.add_argument("--target-fire", action="store_true", help="player ship shoots back at act time")
-    ap.add_argument("--motion", default="none", choices=["none", "impulse", "impulse125", "impulse200", "impulse_power125", "coast", "yaw", "pitch", "roll", "yawdirect"])
+    ap.add_argument("--warp-stop-gu", type=float, default=50.0)
+    ap.add_argument("--warp-time", type=float, default=5.0)
+    ap.add_argument("--motion", default="none", choices=["none", "impulse", "impulse125", "impulse200", "impulse_power125", "warp", "warp_moving", "warpset", "warpset_moving", "coast", "yaw", "pitch", "roll", "yawdirect"])
     ap.add_argument("--range-gu", type=float, default=57.0)
     ap.add_argument("--angle-deg", type=float, default=0.0, help="attacker bearing: 0 ahead, 90 starboard, 180 astern")
     ap.add_argument("--elev-deg", type=float, default=0.0, help="+ above (dorsal), - below")
@@ -345,6 +349,7 @@ def main(argv=None) -> int:
         "shield_power": a.shield_power, "gen_frac": a.gen_frac,
         "ai": 1 if a.ai else 0, "ai_level": a.ai_level, "ai_log": 1 if a.ai_log else 0,
         "target_motion": a.target_motion, "target_fire": 1 if a.target_fire else 0,
+        "warp_stop_gu": a.warp_stop_gu, "warp_time": a.warp_time,
     }
     result = run(a.oracle_dir, params, a.timeout, a.shot, a.shot_at)
     print("hook markers:", ", ".join(k[3:] for k in result["hook"]))

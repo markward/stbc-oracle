@@ -83,6 +83,8 @@ def _read_inputs():
     P["ai_log"]       = int(_getf("ai_log", 0))         # 1 = ArtificialIntelligence_LogAITree("AITree.txt") (armed in OracleGame)
     P["target_motion"] = _gets("target_motion", "none")  # none|impulse|yaw : player ship drives itself at act time
     P["target_fire"]  = int(_getf("target_fire", 0))    # 1 = player phasers + torpedoes fire at the attacker at act time
+    P["warp_stop_gu"] = _getf("warp_stop_gu", 50.0)     # InSystemWarp stop distance from the target
+    P["warp_time"]    = _getf("warp_time", 5.0)         # WarpSequence duration for set-to-set
     for k in P.keys():
         _log.meta("in_" + k, P[k])
 
@@ -468,6 +470,32 @@ def _act_motion():
         except:
             _log.mark("impulse_power_error", _log.exc())
         g_pAttacker.SetImpulse(1.0, fwd, App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
+    elif m in ("warpset", "warpset_moving"):
+        # Set-to-set warp into Vesuvi5 (created on demand), the AI Warp.py way.
+        # __import__ exactly as QuickBattle.ChangeRegion does it: a plain
+        # `import Systems.Vesuvi.Vesuvi5` from inside the Oracle package raises
+        # "No module named Vesuvi5" under Python 1.5's relative-import rules,
+        # and an uncaught exception freezes the game on its debug console.
+        try:
+            pModule = __import__("Systems.Vesuvi.Vesuvi5")
+            pModule = pModule.Vesuvi.Vesuvi5
+            if App.g_kSetManager.GetSet("Vesuvi5") is None:
+                pModule.Initialize()
+            _log.mark("dest_set", str(App.g_kSetManager.GetSet("Vesuvi5")))
+        except:
+            _log.mark("dest_set_error", _log.exc())
+            return
+        if m == "warpset_moving":
+            g_pAttacker.SetImpulse(1.0, fwd, App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
+            MissionLib.CreateTimer(ET_CUT, __name__ + ".OnWarpSet", g_t0 + P["fire_at"] + 6.0, 0.0, 0.0)
+        else:
+            OnWarpSet(None, None)
+    elif m in ("warp", "warp_moving"):
+        if m == "warp_moving":
+            g_pAttacker.SetImpulse(1.0, fwd, App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
+            MissionLib.CreateTimer(ET_CUT, __name__ + ".OnWarp", g_t0 + P["fire_at"] + 6.0, 0.0, 0.0)
+        else:
+            OnWarp(None, None)
     elif m == "yawdirect":
         v = App.TGPoint3(); v.SetXYZ(0.0, 0.0, 1.0)
         g_pAttacker.SetTargetAngularVelocityDirect(v)
@@ -502,6 +530,9 @@ def _act_target():
             g_pTarget.SetImpulse(0.5, fwd, App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
             v = App.TGPoint3(); v.SetXYZ(0.0, 0.0, 1.0)
             g_pTarget.SetTargetAngularVelocityFraction(v)
+        elif tm == "warp":
+            ok = g_pTarget.InSystemWarp(g_pAttacker, P["warp_stop_gu"])
+            _log.mark("player_warp", "ok=%s" % str(ok))
     except:
         _log.mark("target_motion_error", _log.exc())
     if P["target_fire"]:
@@ -514,6 +545,27 @@ def _act_target():
             _log.mark("target_fire", "1")
         except:
             _log.mark("target_fire_error", _log.exc())
+
+def OnWarp(pObject, pEvent):
+    try:
+        ok = g_pAttacker.InSystemWarp(g_pTarget, P["warp_stop_gu"])
+        _log.mark("warp", "t=%.3f ok=%s speed=%.3f" % (
+            App.g_kUtopiaModule.GetGameTime() - g_t0, str(ok), _speed(g_pAttacker)))
+    except:
+        _log.mark("warp_error", _log.exc())
+
+def OnWarpSet(pObject, pEvent):
+    try:
+        pSeq = App.WarpSequence_Create(g_pAttacker, "Vesuvi5", P["warp_time"], "Player Start")
+        pSeq.SetEventDestination(g_pAttacker)
+        pSeq.Play()
+        _log.mark("warpset", "t=%.3f speed=%.3f" % (App.g_kUtopiaModule.GetGameTime() - g_t0, _speed(g_pAttacker)))
+    except:
+        _log.mark("warpset_error", _log.exc())
+
+def _speed(pShip):
+    v = pShip.GetVelocityTG()
+    return (v.x * v.x + v.y * v.y + v.z * v.z) ** 0.5
 
 def OnCut(pObject, pEvent):
     try:
@@ -594,6 +646,15 @@ def OnSample(pObject, pEvent):
                     extra = " rng=%.3f tgt=%s fire=%s" % (_range(), tn, fs or "-")
                 except:
                     extra = " rng=%.3f" % _range()
+            try:
+                extra = extra + " isw=%d" % int(g_pAttacker.IsDoingInSystemWarp())
+                pSetNow = g_pAttacker.GetContainingSet()
+                setname = "-"
+                if pSetNow is not None:
+                    setname = string.replace(pSetNow.GetName(), " ", "_")
+                extra = extra + " set=%s" % setname
+            except:
+                pass
             _log.row("c t=%.4f p=%s v=%s w=%s fw=%s sp=%.4f%s" % (
                 t, _p3(p), _p3(v), _p3(w), _p3(f), sp, extra))
         g_rows = g_rows + 1

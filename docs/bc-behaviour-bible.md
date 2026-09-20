@@ -1,6 +1,6 @@
 # Star Trek: Bridge Commander — measured behaviour bible
 
-**Status:** living document (83 captures, five study matrices). Every number here was measured on the original
+**Status:** living document (87 captures, five study matrices). Every number here was measured on the original
 `stbc.exe` (GOG release, 2002-04-09 build) by the unattended oracle in this
 repo, and every claim names the capture in [`results/`](results/) that backs
 it. Nothing is taken from disassembly or memory; where a reverse-engineered
@@ -341,7 +341,28 @@ e-fold per second (0.92 @ 1.5 s, 0.51 @ 2.1 s, 0.20 @ 3.0 s;
 Model check: Galaxy @ 4 s → 6.3 − 1.5·e^{−(4−3.2)} = 5.63 (measured 5.635);
 BoP yaw @ 1 s → 0.5 − 0.35·e^{−(1−0.43)} = 0.302 (measured 0.304).
 
-### 7.3 Collisions — what mass is for
+### 7.3 In-system warp (`warp_*`, player run confirmed visually)
+
+`ShipClass.InSystemWarp(target, stopDistance)` — the AI's `Intercept` path
+and the helm's in-system warp:
+
+* **Entry is a step, not a ramp**: speed goes from whatever it was to
+  **exactly 75.0 GU/s** on the next sample and holds there; identical for
+  Kessok Heavy (`MaxSpeed` 3.7), Galaxy (6.3) and the player's Galaxy.
+* **Duration = distance / 75**: 7.25 s for 550 GU, 25.9 s for 1950 GU
+  (`warp_kessok_rest_{600,2000}`).
+* **Exit**: when the remaining distance reaches ~the requested stop
+  distance (asked 50, dropped out at 54–61 GU) the flag clears and speed
+  steps down to the ship's **`MaxSpeed`** — Kessok 3.62, Galaxy 6.25 — then
+  decays under the coast law to rest 40–50 GU from the target.
+* **Pre-warp speed is not preserved**: a Kessok entering from rest and one
+  entering at 3.69 GU/s both exit at 3.62 (`warp_kessok_{rest,moving}_600`).
+  Exit velocity is `MaxSpeed` along the warp heading, neither zero nor the
+  entry speed.
+
+Set-to-set warp (`WarpSequence_Create`) is the other half — see §10.
+
+### 7.4 Collisions — what mass is for
 
 Ramming runs (attacker at full impulse into the parked Galaxy from 30 GU,
 `ram_*`): the bounce is a **perfectly elastic collision with the hardpoint
@@ -368,7 +389,7 @@ damage **bypasses shields entirely** (every face unchanged in all three
 runs) and a rammer left under power hits again every ~3 s (Kessok: 5870,
 4487, 4693 → Galaxy destroyed).
 
-### 7.4 Tractor beam
+### 7.5 Tractor beam
 
 With a Galaxy's tractor system engaged on a parked target
 (`tractor_galaxy_*`, Kessok Heavy at 20 GU; `tractor_galaxy_galaxy_*`,
@@ -440,6 +461,7 @@ cadences). File = the capture whose raw rows are the reference.
 | P3 | bolt damage independent of range (40–150 GU) and of emitter power setting | ±2 % | `pulse_warbird_front_*` |
 | T4 | quantum 900, Klingon 1400; ammo switch unloads tubes (Sovereign reload 40 s) | exact | `torpedo_sovereign_quantum_57`, `torpedo_warbird_front_57` |
 | S5 | regen rate identical at red/yellow/green alert | ±5 % | `regen_*_face50` |
+| W1 | in-system warp: step to 75.0 GU/s, duration = distance/75, exit at MaxSpeed regardless of entry speed, drop-out at the requested stop distance | exact / ±10 GU | `warp_*` |
 | C1 | collision is elastic with hardpoint masses (post-impact speeds) | ±3 % | `ram_*` |
 | C2 | rammed-ship damage = 8.2 × 2μv; shields untouched | ±10 % | `ram_*` |
 | P4 | bolt = script damage × emitter DamageScale; power setting changes shot cost 0.5/1/2, not damage | exact | `pulse_warbird_front_40_{meta,low,high}` |
@@ -454,7 +476,8 @@ cadences). File = the capture whose raw rows are the reference.
   GU/s in every mode).
 * Collision damage split per hull pairing (BoP → Kessok: 1417 to the
   Kessok, BoP survived at 5.2 GU/s — no clean constant).
-* Warp: entry/exit velocity, in-system vs set-to-set.
+* Set-to-set warp (`WarpSequence_Create` into a second system): harness
+  modes `warpset` / `warpset_moving` are written, not yet run.
 * Shield regen vs a reactor that cannot supply the generator's
   `NormalPowerPerSecond` (only the generator's own power-wanted was varied).
 * AI: the Warbird AI crashes the game (Bird of Prey, also a cloaker, does
