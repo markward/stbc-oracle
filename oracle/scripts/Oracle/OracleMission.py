@@ -461,6 +461,20 @@ def _act_motion():
     fwd = App.TGPoint3_GetModelForward()
     if m == "impulse":
         g_pAttacker.SetImpulse(1.0, fwd, App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
+    elif m == "impulse125":
+        g_pAttacker.SetImpulse(1.25, fwd, App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
+    elif m == "impulse200":
+        g_pAttacker.SetImpulse(2.0, fwd, App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
+    elif m == "impulse_power125":
+        try:
+            g_pAttacker.GetImpulseEngineSubsystem().SetPowerPercentageWanted(1.25)
+            _log.mark("impulse_power", str(g_pAttacker.GetImpulseEngineSubsystem().GetPowerPercentageWanted()))
+        except:
+            _log.mark("impulse_power_error", _log.exc())
+        g_pAttacker.SetImpulse(1.0, fwd, App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
+    elif m == "yawdirect":
+        v = App.TGPoint3(); v.SetXYZ(0.0, 0.0, 1.0)
+        g_pAttacker.SetTargetAngularVelocityDirect(v)
     elif m == "coast":
         g_pAttacker.SetImpulse(1.0, fwd, App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
         MissionLib.CreateTimer(ET_CUT, __name__ + ".OnCut", g_t0 + P["fire_at"] + P["duration"] * 0.5, 0.0, 0.0)

@@ -305,7 +305,7 @@ def main(argv=None) -> int:
     ap.add_argument("--ai", action="store_true", help="leave the Quick Battle AI driving the attacker")
     ap.add_argument("--ai-level", type=float, default=0.5, help="BasicAttack difficulty 0.0/0.5/1.0")
     ap.add_argument("--ai-log", action="store_true", help="engine AI tree log to <oracle>/AITree.txt")
-    ap.add_argument("--motion", default="none", choices=["none", "impulse", "coast", "yaw", "pitch", "roll"])
+    ap.add_argument("--motion", default="none", choices=["none", "impulse", "impulse125", "impulse200", "impulse_power125", "coast", "yaw", "pitch", "roll", "yawdirect"])
     ap.add_argument("--range-gu", type=float, default=57.0)
     ap.add_argument("--angle-deg", type=float, default=0.0, help="attacker bearing: 0 ahead, 90 starboard, 180 astern")
     ap.add_argument("--elev-deg", type=float, default=0.0, help="+ above (dorsal), - below")

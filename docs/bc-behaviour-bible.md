@@ -1,6 +1,6 @@
 # Star Trek: Bridge Commander — measured behaviour bible
 
-**Status:** living document (69 captures, three study matrices). Every number here was measured on the original
+**Status:** living document (78 captures, four study matrices). Every number here was measured on the original
 `stbc.exe` (GOG release, 2002-04-09 build) by the unattended oracle in this
 repo, and every claim names the capture in [`results/`](results/) that backs
 it. Nothing is taken from disassembly or memory; where a reverse-engineered
@@ -307,7 +307,19 @@ dω/dt = clamp(ω_target − ω, −MaxAngularAccel, +MaxAngularAccel)
 i.e. constant acceleration at the hardpoint cap until within one cap-second
 of the target, then exponential approach with a **1.0 s time constant**.
 Mass and rotational inertia do not enter (Galaxy mass 120 vs Kessok 500 —
-profiles match the law exactly). Stopping (`SetImpulse(0)`) is the same law
+profiles match the law exactly).
+
+**What the "max" values actually cap.** `v_target = MaxSpeed × impulse
+fraction × engine power fraction`: the impulse fraction is clamped to 1.0
+(`SetImpulse(1.25)` and `(2.0)` both give 3.700, `motion_kessok_impulse{125,200}`),
+but the **impulse engine's power fraction is not** — at
+`SetPowerPercentageWanted(1.25)` the Kessok cruises at **4.625 = 1.25 ×
+3.7** (`motion_kessok_impulse_power125`). That is how AI ships (and a player
+who boosts engine power) exceed `MaxSpeed`. Likewise `MaxAngularVelocity`
+caps only the *fraction* command: `SetTargetAngularVelocityDirect(1.0 rad/s)`
+ramps at `MaxAngularAccel` (0.11 rad/s², linear) with the same 1 s approach
+and settles at **1.0 rad/s**, 4.5× the hardpoint "max"
+(`motion_kessok_yawdirect`). Stopping (`SetImpulse(0)`) is the same law
 towards 0: from 3.7 GU/s the Kessok falls at 2.5 GU/s² to 2.3, then decays
 e-fold per second (0.92 @ 1.5 s, 0.51 @ 2.1 s, 0.20 @ 3.0 s;
 `motion_kessok_coast`).
@@ -414,6 +426,12 @@ cadences). File = the capture whose raw rows are the reference.
 | M2 | angular rate follows the same law with MaxAngularAccel / MaxAngularVelocity, identical on yaw/pitch/roll | ±2 % | `motion_*_{yaw,pitch,roll}` |
 | M3 | stopping follows the same law towards 0 | ±5 % | `motion_kessok_coast` |
 | M4 | mass / rotational inertia do not affect M1–M3 | — | Galaxy vs Kessok vs BoP |
+| M5 | impulse fraction clamps at 1.0, engine power fraction does not: 125 % power ⇒ 1.25 × MaxSpeed | exact | `motion_kessok_impulse{125,200,_power125}` |
+| M6 | direct angular command is uncapped, ramps at MaxAngularAccel with the 1 s approach | ±3 % | `motion_kessok_yawdirect` |
+| A1 | AI reaction ≈ 4 s after spawn; fires every weapon in arc from 150 GU | ±0.5 s | `ai_*` |
+| A2 | Kessok AI pass: close to ~47 GU at ≤4.2 GU/s, break away at 4.6 GU/s to ~123 GU, turn at 0.40 rad/s; identical at all three difficulties | ±5 GU | `ai_kessok_vs_parked_galaxy_*` |
+| A3 | AI difficulty changes weapons use, not motion: LOW never fires torpedoes | — | `ai_kessok_vs_parked_galaxy_low` |
+| A4 | AI runs impulse engines at 125 % power (speed = 1.25 × MaxSpeed) | exact | `ai_*` |
 | F1 | single-fire phaser systems fire one bank at a time, round-robin on exhaustion; Galaxy quantum 66, Sovereign 80 | exact / ±1 bank | `phaser_{galaxy,sovereign}_front_57` |
 | F2 | windup and pulse period are game-time constants (unchanged at time scale 0.5) | ±0.1 s | `phaser_high_front_57_timescale05` |
 | P3 | bolt damage independent of range (40–150 GU) and of emitter power setting | ±2 % | `pulse_warbird_front_*` |
@@ -431,10 +449,71 @@ cadences). File = the capture whose raw rows are the reference.
 
 * Tractor beam: what produces its in-game pull (a parked pair shows 0.007
   GU/s in every mode).
-* Collision damage split per hull pairing (BoP → Kessok run crashed the
-  game; not retried).
+* Collision damage split per hull pairing (BoP → Kessok: 1417 to the
+  Kessok, BoP survived at 5.2 GU/s — no clean constant).
 * Warp: entry/exit velocity, in-system vs set-to-set.
 * Shield regen vs a reactor that cannot supply the generator's
   `NormalPowerPerSecond` (only the generator's own power-wanted was varied).
-* AI behaviour: approach, engagement range, firing decisions, evasion — the
-  oracle's `--ai` mode traces it; see §11 once captured.
+* AI: cloaking attackers (the Warbird AI run crashed the game — the
+  CloakAttack branch needs its own investigation); AI versus a *moving* or
+  *shooting* player; the engine's `LogAITree` (arming it after the AI exists
+  kills the process; it must be armed at boot).
+
+---
+
+## 11. AI behaviour (Quick Battle `BasicAttack`)
+
+Captured with the stock Quick Battle AI left on the attacker (`--ai`),
+difficulty 0.0 / 0.5 / 1.0, against a parked Galaxy with its weapons live
+but nobody at the controls, from 150 GU dead ahead, 90 s, all rows at 31 ms.
+The AI is the SDK's own Python (`AI/Compound/BasicAttack.py` →
+`NonFedAttack` / `FedAttack`), so a remake that runs those scripts should
+reproduce the *decisions*; what the oracle pins down is the *engine side*
+they drive — speeds, turn rates, fire gates — and the resulting trajectory.
+
+### 11.1 Timeline (Kessok Heavy, MED; `ai_kessok_vs_parked_galaxy_med`)
+
+| t (s) | range (GU) | speed | what happens |
+|---|---|---|---|
+| 0–4 | 150 | 0 | idle (spawn settle; AI reaction 4.0 s after the sim starts) |
+| 6.1 | 150 | 0.07 | target acquired; **phasers and torpedoes open at 150 GU** |
+| 8–14 | 145→136 | 1.5–2.8 | throttles up and down while turning in |
+| 16–32 | 130→67 | 3.7–4.1 | straight approach at full power (1.1 × MaxSpeed) |
+| 34–40 | 60→47.5 | 2.5–4.2 | slows, **closest approach 47.5 GU**, turns at 0.37–0.39 rad/s |
+| 40–54 | 47→106 | 4.2→**4.63** | breaks away at 1.25 × MaxSpeed, phasers only |
+| 56–64 | 114→123 | 2.8→1.5 | turns back (0.33–0.40 rad/s) at the far end |
+| 66–90 | 123→86 | 0.6–3.4 | second approach, torpedoes resume, throttle hunting |
+
+Phasers were "trying to fire" 93 % of the run, torpedoes 42 %; both are
+commanded whenever the target is inside the AI's range rule (here the full
+150 GU — well under the 700 GU engine gate) and in arc. Result on the parked
+Galaxy: all six faces down, hull −13 265, 11 subsystems hit.
+
+### 11.2 Difficulty
+
+| level | trajectory | phasers | torpedoes | Galaxy hull damage |
+|---|---|---|---|---|
+| 0.0 (LOW) | identical (min 47.6, break to 123.4) | 94 % | **never** | 5 755 |
+| 0.5 (MED) | identical | 93 % | 42 % | 13 265 |
+| 1.0 (HIGH) | identical | 94 % | 42 % | 13 967 |
+
+Motion is **deterministic and difficulty-independent** for the same start;
+difficulty gates weapon use (torpedoes off at LOW) and, presumably, the
+accuracy/pattern flags in `BasicAttack.SetFlagsFromDifficulty`.
+
+### 11.3 Federation attacker (`ai_galaxy_vs_parked_galaxy_med`)
+
+`FedAttack` on a Galaxy: reaction 4.1 s, opens at 150 GU, runs passes
+between ~64 and ~147 GU at **7.8 GU/s** (1.25 × 6.3) turning at 0.40 rad/s,
+attacks from **above** (top face −3619, front −1854), torpedo duty only
+12 %, and does 1 724 hull damage in 90 s — single-fire phasers (§2.3) make
+Federation AIs slow killers.
+
+### 11.4 Engine facts the AI relies on
+
+* engines at **125 % power** (§7.1) — every AI run peaks at exactly 1.25 × MaxSpeed;
+* turns commanded through the **direct** angular API (0.40 rad/s on a
+  0.22-rad/s Kessok; 0.40 on a 0.28 Galaxy), so a remake must expose an
+  uncapped direct command and cap only the fraction command;
+* firing is a per-tick "try to fire" on every system; the engine's arc,
+  range and charge gates do the rest.

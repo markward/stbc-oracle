@@ -102,6 +102,14 @@ MATRIX: dict[str, dict] = {
     "tractor_galaxy_galaxy_hold": dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="hold", rows="abc", range_gu=15.0, duration=30.0),
     "tractor_galaxy_galaxy_tow":  dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="tow", rows="abc", range_gu=15.0, duration=30.0),
     "tractor_galaxy_galaxy_push": dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="push", rows="abc", range_gu=15.0, duration=30.0),
+    "motion_kessok_impulse125": dict(weapon="none", motion="impulse125", rows="c", range_gu=300.0, duration=20.0),
+    "motion_kessok_impulse200": dict(weapon="none", motion="impulse200", rows="c", range_gu=300.0, duration=20.0),
+    "motion_kessok_impulse_power125": dict(weapon="none", motion="impulse_power125", rows="c", range_gu=300.0, duration=20.0),
+    "motion_kessok_yawdirect":  dict(weapon="none", motion="yawdirect", rows="c", range_gu=300.0, duration=15.0),
+    "ai_kessok_vs_parked_galaxy_low":  dict(weapon="none", ai=1, ai_level=0.0, range_gu=150.0, duration=90.0, rows="abc", disable_target_weapons=0),
+    "ai_kessok_vs_parked_galaxy_high": dict(weapon="none", ai=1, ai_level=1.0, range_gu=150.0, duration=90.0, rows="abc", disable_target_weapons=0),
+    "ai_galaxy_vs_parked_galaxy_med":  dict(attacker="Galaxy", weapon="none", ai=1, ai_level=0.5, range_gu=150.0, duration=90.0, rows="abc", disable_target_weapons=0),
+    "ai_warbird_vs_parked_galaxy_med": dict(attacker="Warbird", weapon="none", ai=1, ai_level=0.5, range_gu=150.0, duration=90.0, rows="abc", disable_target_weapons=0),
     "tractor_galaxy_galaxy_pull": dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="pull", rows="abc", range_gu=15.0, duration=30.0),
 }
 
