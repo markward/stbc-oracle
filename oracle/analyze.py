@@ -32,7 +32,12 @@ def firing_window(rows: list[dict]) -> tuple[float, float, int] | None:
 
 
 def weapon_summary(res: dict) -> dict:
-    rows = res["rows"]
+    """Baselined at act time (+50 ms): shield presets happen then, so the
+    pre-act samples must not count as damage.  Hits are detected from the
+    shield/hull deltas, never from the firing flags - torpedo tubes never
+    report IsFiring."""
+    t_act = res["params"]["fire_at"] + 0.05
+    rows = [r for r in res["rows"] if r["t"] >= t_act]
     out: dict = {"name": res.get("name"), "params": res["params"]}
     if not rows:
         return out
@@ -43,12 +48,12 @@ def weapon_summary(res: dict) -> dict:
     out["total_shield"] = [round(a - b, 1) for a, b in zip(first["sh"], last["sh"])]
     out["total_hull"] = round(first["h"] - last["h"], 1)
     out["max_faces"] = [float(x) for x in res["meta"].get("target_max_shields", "").split(",") if x]
-    fw = firing_window(rows)
+    fw = firing_window(res["rows"])
     if fw:
         out["fire_on"], out["fire_off"], out["max_emitters"] = fw
-        out["first_damage"] = hits[0]["t"] if hits else None
         out["windup_s"] = round(hits[0]["t"] - fw[0], 3) if hits else None
-        out["last_damage"] = hits[-1]["t"] if hits else None
+    out["first_damage"] = hits[0]["t"] if hits else None
+    out["last_damage"] = hits[-1]["t"] if hits else None
     if hits:
         sizes = sorted(round(sum(e["d_sh"]) + e["d_h"], 2) for e in hits)
         out["hit_count"] = len(hits)
@@ -73,7 +78,7 @@ def weapon_summary(res: dict) -> dict:
         out["regen_step"] = round(rg[0][0], 2)
         out["regen_period_s"] = round(sorted(gaps)[len(gaps) // 2], 3) if gaps else None
     # subsystem damage
-    srows = res.get("sub_rows") or []
+    srows = [r for r in (res.get("sub_rows") or []) if r["t"] >= t_act]
     if srows and res.get("subsystems"):
         d = [a - b for a, b in zip(srows[0]["s"], srows[-1]["s"])]
         out["subsystem_damage"] = {sub["name"]: round(x, 1)
