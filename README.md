@@ -103,7 +103,8 @@ projectile module's `Create` with one argument changed; `--shot-on <marker>
 --shot-count N --shot-every s --shot-delay s` takes a burst of screenshots
 once a boot marker appears (`oracle/vfx_measure.py` reduces them). Note
 `PrintWindow` returns an all-black frame now and then — bursts, not
-single shots.
+single shots. `phaserpatch:<Attr>=<v>[;…]` / `firephaser` / `stopphaser` /
+`phaserstate` do the same for the player's beams (colours as r/g/b).
 
 ## Outputs
 

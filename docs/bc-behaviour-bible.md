@@ -527,6 +527,7 @@ cadences). File = the capture whose raw rows are the reference.
 | N2 | every non-player object spawns at red alert (E1M1's dock scene: green) with full hull and shields; ambient traffic runs `AvoidObstacles` at 4.0 GU/s; nothing is hidden, cloaked or dying at t = 0 | exact / ±2 % | `scene_*` |
 | N3 | per-mission cast, placements and 90 s autonomous evolution as tabulated in §13 / `docs/mission-scenes.md` (E2M6 fight, E3M2 Warbird warps out by 30 s, E4M5 Enterprise arrives at 46 s) | ±5 GU, ±5 s | `scene_E2M6`, `scene_E3M2`, `scene_E4M5` |
 | V6 | camera-mode stations scale with the watched object's `GetRadius()`: Chase/ReverseChase 4.0 R astern/ahead + 0.1 R up, Target 3.97 R + 0.48 R, ZoomTarget 4.0 R_target short of the target, ViewscreenZoomTarget 8.0 R_target, CinematicReverseTarget 3.97 R_source beyond the source, WideTarget 31.6 R + 4.9 R; absolute GU for FreeOrbit (75), Map (1000, 10 % up), TorpCam (4.00 behind the torpedo, Chase 2.0 s after it is gone), Placement / Locked (exact); FirstPerson at the hardpoint; sweeps settle in 1.0 s (TorpCam 2 s); viewscreen directions at the model hardpoints (§12.1a) | ±2 % | `cam_galaxy_space_modes`, `cam_galaxy_cin_modes`, `cam_galaxy_viewscreen`, `cam_galaxy_torpcam`, `cam_galaxy_script_modes` |
+| X2 | beam levers read at fire time: `MainRadius` scales the beam width linearly (9 → 44 px for 0.15 → 0.6), `CoreScale` the bright core (9 → 15 px), the four colour slots set the beam colour, `NumSides` is real geometry, the texture row band changes nothing visible; taper is at the emitter end | ±15 % on widths | `docs/results/vfx/ph_*` |
 | X1 | `CreateTorpedoModel` argument semantics (core scale, flare rotation/count/length/lifespan, glow base size / pulse rate / pulse amplitude) and `CreateDisruptorModel(shell, core, length, width)`, as tabulated in §14.2–14.3; projectile `GetRadius()` = sprite bound (photon 0.770, bolt = length/2) | ±5 % on radii | `docs/results/vfx/*` |
 | V5 | player warp camera choreography: pre-warp cutscene camera 30.8 GU astern within 0.2 s of `Play()`, stays put while the ship streaks away; bridge viewscreen from 2.0 s after the ship enters the warp set until 0.6 s before it leaves; destination cutscene camera 53 GU ahead of the placement, aimed at the arriving ship, live 0.6 s before the ship appears; external Chase view and control back 2.0 s after arrival | ±0.2 s, ±1 GU | `warpcam_galaxy` |
 
@@ -833,7 +834,7 @@ freeze-detector budget is the mission `duration` + 23 s; and the driver's
 Read from the SDK scripts (`ships/Hardpoints/*.py`, `Tactical/Projectiles/*.py`,
 `Effects.py`, `LoadTacticalSounds.py`, `Tactical/EffectTextures.py`) and the
 asset files in the game copy; the unnamed model-builder arguments (§14.2,
-§14.3) were then verified on the exe. The renderers
+§14.3) and the beam levers (§14.1) were then verified on the exe. The renderers
 themselves are engine code — the scripts only choose assets and set the
 levers below, so a remake reproduces the *parameters*, not a script.
 
@@ -885,6 +886,28 @@ animate, and one flat blue-violet colour for all four colour slots.
 `data/Textures/Tactical/PhaserLights.tga` (32 × 32 radial white sprite,
 centre α 251 → edge 15) is the only other beam asset in the folder; it is
 not referenced from any script, so it is the engine's emitter glow.
+
+**Verified on the exe** (`docs/results/vfx/ph_*.png`, `vfx_ph_*.json`): the
+player's eight `PhaserProperty` objects were patched at runtime
+(`cam_mode` step `phaserpatch:<Attr>=<v>`), one bank fired at the Kessok
+60 GU dead ahead, six chase-view frames measured along the beam
+(`oracle/vfx_measure.py` style row scan, width of the bright column and
+its centre colour):
+
+| lever changed | stock frame | changed frame | reading |
+|---|---|---|---|
+| `MainRadius` 0.15 → 0.6 | width 9 px | **44 px** | shell radius, linear (`ph_radius_00.png`) |
+| `CoreScale` 0.5 → 1.0 | 9 px | 15 px | core radius = CoreScale × shell (`ph_core_00.png`) |
+| four colour slots → 0,0,255 | centre RGB 248,194,165 | **29,26,244** | the colours are the beam's colour, read at fire time (`ph_blue_00.png`) |
+| `NumSides` 6 → 3 | 9 px | 5 px, patchy | real tube geometry — fewer sides, thinner edge-on (`ph_sides_00.png`) |
+| `PhaserTextureStart/End` 0–7 → 24–31 | 9 px, 248,194,165 | 9 px, 247,190,161 | **no visible change** — the rows are grey-noise modulation only, species colour is not in the texture (`ph_rows_00.png`) |
+
+The beam is **thin at the emitter and full width at the far end** in every
+frame — the taper (`TaperRadius` 0.01 → `MainRadius` over `TaperRatio`
+of the length, clamped 5–30 GU) is at the emitter end. Taper lengths and
+`TextureSpeed` were not varied. Locked/Placement cutscene cameras are not
+a way to film beams: the beam is only in frame from Chase-family views in
+these runs.
 
 Beam identification for a remake: emitter = hardpoint name (`"Ventral
 Phaser 3"`), position (`SetPosition`), orientation and arcs; look = the

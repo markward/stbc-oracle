@@ -763,6 +763,42 @@ def _cam_step(step):
     elif kind == "fire":
         g_pTarget.SetTarget(g_pAttacker.GetName())
         g_pTarget.GetTorpedoSystem().StartFiring(g_pAttacker)
+    elif kind == "phaserpatch":
+        # phaserpatch:<Attr>=<value>[;<Attr>=<value>] on every phaser bank property of the player
+        # (colour values as r/g/b 0-255, others float/int); did the renderer read it? -> the frames
+        n = 0
+        ps = g_pTarget.GetPhaserSystem()
+        for i in range(ps.GetNumChildSubsystems()):
+            b = App.PhaserBank_Cast(ps.GetChildSubsystem(i))
+            if b is None:
+                continue
+            prop = App.PhaserProperty_Cast(b.GetProperty())
+            if prop is None:
+                continue
+            for item in string.split(arg, ";"):
+                j = string.find(item, "=")
+                attr = item[:j]
+                val = _vfx_value(item[j + 1:])
+                if type(val) == type(()):
+                    val = _color(val)
+                getattr(prop, "Set" + attr)(val)
+            n = n + 1
+        _log.mark("phaserpatch", "%s on %d banks" % (arg, n))
+    elif kind == "firephaser":
+        g_pTarget.SetTarget(g_pAttacker.GetName())
+        g_pTarget.GetPhaserSystem().StartFiring(g_pAttacker)
+    elif kind == "phaserstate":
+        ps = g_pTarget.GetPhaserSystem()
+        st = "try=%d" % int(ps.IsTryingToFire())
+        for i in range(ps.GetNumChildSubsystems()):
+            b = App.PhaserBank_Cast(ps.GetChildSubsystem(i))
+            if b is not None:
+                st = st + " %d:%.1f/%d" % (i, b.GetChargeLevel(), int(b.IsFiring()))
+        tg = g_pTarget.GetTarget()
+        st = st + " tgt=%s" % (tg is not None and string.replace(tg.GetName(), " ", "_") or "-")
+        _log.mark("phaserstate", st[:170])
+    elif kind == "stopphaser":
+        g_pTarget.GetPhaserSystem().StopFiring()
     elif kind == "firepulse":
         g_pTarget.SetTarget(g_pAttacker.GetName())
         g_pTarget.GetPulseWeaponSystem().StartFiring(g_pAttacker)
@@ -821,9 +857,14 @@ def _cam_step(step):
             sph = [float(parts[0]), float(parts[1]), float(parts[2])]
         Camera.LockedSphericalLookCenter(g_pTarget.GetName(), sph[0], sph[1], sph[2])
     elif kind == "lockednormal":
+        # arg "x/y/z/fx/fy/fz" (model space: +Y forward, +X starboard, +Z up); default (10,20,5) looking aft
         import Camera
-        vP = App.TGPoint3(); vP.SetXYZ(10.0, 20.0, 5.0)       # model space: +Y is model forward
-        vF = App.TGPoint3(); vF.SetXYZ(0.0, -1.0, 0.0)
+        v = [10.0, 20.0, 5.0, 0.0, -1.0, 0.0]
+        if arg != "":
+            parts = string.split(arg, "/")
+            v = [float(parts[0]), float(parts[1]), float(parts[2]), float(parts[3]), float(parts[4]), float(parts[5])]
+        vP = App.TGPoint3(); vP.SetXYZ(v[0], v[1], v[2])
+        vF = App.TGPoint3(); vF.SetXYZ(v[3], v[4], v[5])
         vU = App.TGPoint3(); vU.SetXYZ(0.0, 0.0, 1.0)
         Camera.LockedNormal(g_pTarget.GetName(), vP, vF, vU)
     elif kind == "firstperson":
