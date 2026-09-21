@@ -84,6 +84,8 @@ def _read_inputs():
     P["target_motion"] = _gets("target_motion", "none")  # none|impulse|yaw|warp|warpset : player ship drives itself at act time
     P["sample"]       = _gets("sample", "attacker")      # attacker|target : which ship row c follows
     P["view"]         = _gets("view", "bridge")          # bridge|tactical : the player's view once the sim runs
+    P["cam_mode"]     = _gets("cam_mode", "none")        # comma list of camera steps applied every cam_step_s from act time (see _cam_step)
+    P["cam_step_s"]   = _getf("cam_step_s", 4.0)
     P["warp_patch"]   = _gets("warp_patch", "none")      # comma list of WarpSequence player-branch camera steps to no-op (bisecting a crash)
     P["target_fire"]  = int(_getf("target_fire", 0))    # 1 = player phasers + torpedoes fire at the attacker at act time
     P["warp_stop_gu"] = _getf("warp_stop_gu", 50.0)     # InSystemWarp stop distance from the target
@@ -110,6 +112,8 @@ g_timers = []
 ET_SAMPLE = App.UtopiaModule_GetNextEventType()
 ET_ACT    = App.UtopiaModule_GetNextEventType()
 ET_CUT    = App.UtopiaModule_GetNextEventType()
+ET_CAMSTEP = App.UtopiaModule_GetNextEventType()
+g_cam_steps = []
 ET_END    = App.UtopiaModule_GetNextEventType()
 
 # --- helpers ----------------------------------------------------------------
@@ -656,6 +660,67 @@ def _warpset(pShip):
     except:
         _log.mark("warpset_error", _log.exc())
 
+def _cam_step(step):
+    """One camera step, mirroring the stock key handlers:
+       space:<Mode>   TacticalInterfaceHandlers -> AddModeHierarchy("InvalidSpace", Mode)
+       cin:<Mode>     CinematicInterfaceHandlers -> cinematic window + AddModeHierarchy("InvalidCinematic", Mode)
+                      (CinematicReverseTarget also gets its Source from GetTargetableObjects, as CameraTarget does)
+       vs:<Dir>       BridgeHandlers.ViewscreenDirection -> player camera as viewscreen + AddModeHierarchy("InvalidViewscreen", "Viewscreen<Dir>")
+       settarget      player targets the attacker;  fire: player torpedoes at the attacker;  cinoff: StopCinematicMode"""
+    pGame = App.Game_GetCurrentGame()
+    pCam = pGame.GetPlayerCamera()
+    kind = step
+    arg = ""
+    i = string.find(step, ":")
+    if i >= 0:
+        kind = step[:i]
+        arg = step[i + 1:]
+    if kind == "settarget":
+        g_pTarget.SetTarget(g_pAttacker.GetName())
+    elif kind == "fire":
+        g_pTarget.SetTarget(g_pAttacker.GetName())
+        g_pTarget.GetTorpedoSystem().StartFiring(g_pAttacker)
+    elif kind == "cinoff":
+        App.TGScriptAction_Create("Actions.CameraScriptActions", "StopCinematicMode").Play()
+    elif kind == "space":
+        pCam.AddModeHierarchy("InvalidSpace", arg)
+        pM = pCam.GetNamedCameraMode(arg)
+        if pM is not None:
+            pM.Reset()
+    elif kind == "cin":
+        pTop = App.TopWindow_GetTopWindow()
+        pCinW = App.CinematicWindow_Cast(pTop.FindMainWindow(App.MWT_CINEMATIC))
+        pFocus = pTop.GetFocus()
+        if pFocus is None or pCinW is None or pFocus.GetObjID() != pCinW.GetObjID():
+            App.TGScriptAction_Create("Actions.CameraScriptActions", "StartCinematicMode", 0).Play()
+        if arg == "CinematicReverseTarget":
+            pM = pCam.GetNamedCameraMode(arg)
+            lS = g_pTarget.GetContainingSet().GetTargetableObjects(g_pTarget, 0)
+            if pM is not None and lS:
+                pM.SetAttrIDObject("Source", lS[0])
+                _log.mark("cam_source", string.replace(lS[0].GetName(), " ", "_"))
+        pCam.AddModeHierarchy("InvalidCinematic", arg)
+    elif kind == "vs":
+        import Camera
+        Camera.PlayerCameraAsViewscreen()
+        pCam.AddModeHierarchy("InvalidViewscreen", "Viewscreen" + arg)
+    else:
+        _log.mark("cam_step_unknown", step)
+
+
+def OnCamStep(pObject, pEvent):
+    global g_cam_steps
+    if g_done or not g_cam_steps:
+        return
+    step = g_cam_steps[0]
+    g_cam_steps = g_cam_steps[1:]
+    try:
+        _cam_step(step)
+        _log.mark("cam_step", "t=%.3f %s" % (App.g_kUtopiaModule.GetGameTime() - g_t0, step))
+    except:
+        _log.mark("cam_step_error", "%s: %s" % (step, _log.exc()))
+
+
 def _create_dest_set():
     try:
         import QuickBattle.QuickBattle
@@ -741,7 +806,7 @@ def OnCut(pObject, pEvent):
         _log.mark("cut_error", _log.exc())
 
 def OnAct(pObject, pEvent):
-    global g_acted
+    global g_acted, g_cam_steps
     if g_acted:
         return
     g_acted = 1
@@ -752,6 +817,10 @@ def OnAct(pObject, pEvent):
         if P["motion"] != "none":
             _act_motion()
         _act_target()
+        if P["cam_mode"] != "none":
+            g_cam_steps = string.split(P["cam_mode"], ",")
+            MissionLib.CreateTimer(ET_CAMSTEP, __name__ + ".OnCamStep",
+                                   App.g_kUtopiaModule.GetGameTime(), P["cam_step_s"], -1)
         _record_meta()
         _log.mark("acted", "t=%.3f weapon=%s motion=%s" % (
             App.g_kUtopiaModule.GetGameTime() - g_t0, P["weapon"], P["motion"]))
@@ -786,8 +855,9 @@ def _camera_row(t):
                 g_cam_meta = 1
                 try:
                     kF = pCam.GetNiFrustum()
-                    _log.meta("player_camera", "name=%s frustum right=%.4f top=%.4f near=%.3f far=%.1f" % (
-                        pCam.GetName(), kF.m_fRight, kF.m_fTop, kF.m_fNear, kF.m_fFar))
+                    _log.meta("player_camera", "name=%s frustum right=%.4f top=%.4f near=%.3f far=%.1f player_radius=%.3f attacker_radius=%.3f" % (
+                        pCam.GetName(), kF.m_fRight, kF.m_fTop, kF.m_fNear, kF.m_fFar,
+                        g_pTarget.GetRadius(), g_pAttacker.GetRadius()))
                 except:
                     _log.meta("player_camera", "frustum err " + _log.exc())
         cin = 0

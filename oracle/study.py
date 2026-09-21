@@ -21,7 +21,7 @@ BASE = dict(attacker="KessokHeavy", target="Galaxy", weapon="phaser", motion="no
             power_wanted=-1.0, shield_face=-1, shield_frac=1.0, shields_off=0,
             settle_s=2.0, fire_at=1.0, duration=12.0, sample_dt=0.03,
             disable_target_weapons=1, rows="ab", torp_type=-1, pulse_power=-1,
-            time_scale=1.0, target_alert="red", tractor_mode="hold", shield_power=-1.0, gen_frac=-1.0, ai=0, ai_level=0.5, ai_log=0, target_motion="none", target_fire=0, warp_stop_gu=50.0, warp_time=5.0, warp_dest="Systems.Vesuvi.Vesuvi5", warp_clear=0.0, sample="attacker", view="bridge", warp_patch="none", mission="none")
+            time_scale=1.0, target_alert="red", tractor_mode="hold", shield_power=-1.0, gen_frac=-1.0, ai=0, ai_level=0.5, ai_log=0, target_motion="none", target_fire=0, warp_stop_gu=50.0, warp_time=5.0, warp_dest="Systems.Vesuvi.Vesuvi5", warp_clear=0.0, sample="attacker", view="bridge", warp_patch="none", mission="none", cam_mode="none", cam_step_s=4.0)
 
 MATRIX: dict[str, dict] = {
     # --- phasers: intensity table -------------------------------------------
@@ -129,6 +129,15 @@ MATRIX: dict[str, dict] = {
     "cam_galaxy_target":       dict(weapon="none", target_motion="settarget", sample="target", rows="cd", range_gu=300.0, duration=20.0, fire_at=10.0, view="tactical"),
     "cam_galaxy_chase_impulse": dict(weapon="none", target_motion="impulse", sample="target", rows="cd", range_gu=300.0, duration=25.0, fire_at=10.0, view="tactical"),
     "cam_galaxy_chase_yaw":    dict(weapon="none", target_motion="yaw", sample="target", rows="cd", range_gu=300.0, duration=25.0, fire_at=10.0, view="tactical"),
+    # The remaining player-camera modes, stepped every 4 s inside one run (see _cam_step).
+    "cam_galaxy_space_modes": dict(weapon="none", sample="target", rows="cd", range_gu=300.0, duration=40.0, fire_at=10.0, view="tactical",
+                                   cam_mode="space:ReverseChase,settarget,space:ZoomTarget,space:Target,space:Chase,space:ReverseChase"),
+    "cam_galaxy_cin_modes":   dict(weapon="none", sample="target", rows="cd", range_gu=300.0, duration=44.0, fire_at=10.0, view="tactical",
+                                   cam_mode="cin:Chase,cin:FreeOrbit,cin:CinematicReverseTarget,settarget,cin:WideTarget,cin:DropAndWatch,cinoff"),
+    "cam_galaxy_torpcam":     dict(weapon="none", sample="target", rows="cd", range_gu=150.0, duration=30.0, fire_at=10.0, view="tactical",
+                                   disable_target_weapons=0, cam_mode="cin:TorpCam,fire", cam_step_s=2.0),
+    "cam_galaxy_viewscreen":  dict(weapon="none", sample="target", rows="cd", range_gu=300.0, duration=40.0, fire_at=10.0, view="tactical",
+                                   cam_mode="vs:Forward,vs:Left,vs:Right,vs:Back,vs:Up,vs:Down,settarget,vs:ZoomTarget"),
     "cam_galaxy_cinematic":    dict(weapon="none", target_motion="cinematic", sample="target", rows="cd", range_gu=300.0, duration=20.0, fire_at=10.0),
     # Scene audit of stock campaign missions (random.seed(20260921).sample of
     # the 26 shipped missions, 10, plus E1M1): every ship in the player's set, every 5 s

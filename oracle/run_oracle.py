@@ -357,6 +357,8 @@ def main(argv=None) -> int:
     ap.add_argument("--target-motion", default="none", choices=["none", "impulse", "yaw", "warp", "warpset", "cinematic", "settarget"])
     ap.add_argument("--sample", default="attacker", choices=["attacker", "target"], help="which ship row c follows")
     ap.add_argument("--mission", default="none", help="stock campaign mission to load instead of Quick Battle (E1M1 .. E8M2); scene rows s/h/m every sample_dt for duration")
+    ap.add_argument("--cam-mode", default="none", help="comma list of player-camera steps applied every --cam-step-s from act time: space:<Mode> cin:<Mode> vs:<Dir> settarget fire cinoff")
+    ap.add_argument("--cam-step-s", type=float, default=4.0)
     ap.add_argument("--warp-patch", default="none", help="comma list of WarpSequence player-branch camera steps to no-op")
     ap.add_argument("--view", default="bridge", choices=["bridge", "tactical"], help="the player's view once the sim runs")
     ap.add_argument("--target-fire", action="store_true", help="player ship shoots back at act time")
@@ -398,7 +400,7 @@ def main(argv=None) -> int:
         "time_scale": a.time_scale, "target_alert": a.target_alert, "tractor_mode": a.tractor_mode,
         "shield_power": a.shield_power, "gen_frac": a.gen_frac,
         "ai": 1 if a.ai else 0, "ai_level": a.ai_level, "ai_log": 1 if a.ai_log else 0,
-        "target_motion": a.target_motion, "target_fire": 1 if a.target_fire else 0, "sample": a.sample, "view": a.view, "warp_patch": a.warp_patch, "mission": a.mission,
+        "target_motion": a.target_motion, "target_fire": 1 if a.target_fire else 0, "sample": a.sample, "view": a.view, "warp_patch": a.warp_patch, "mission": a.mission, "cam_mode": a.cam_mode, "cam_step_s": a.cam_step_s,
         "warp_stop_gu": a.warp_stop_gu, "warp_time": a.warp_time, "warp_dest": a.warp_dest, "warp_clear": a.warp_clear,
     }
     result = run(a.oracle_dir, params, a.timeout, a.shot, a.shot_at)

@@ -93,7 +93,9 @@ run. Nothing in the stock script tree is modified.
 `power_wanted`, `shield_face`/`shield_frac`, `shields_off`, `settle_s`,
 `fire_at`, `duration`, `sample_dt`, `disable_target_weapons`, `rows`
 (`a` weapon/shields/hull, `b` subsystem conditions, `c` motion of the
-`sample` ship, `d` player camera, `e` the rendered set's active camera).
+`sample` ship, `d` player camera, `e` the rendered set's active camera);
+`cam_mode` steps the player camera through modes every `cam_step_s`
+(`space:<Mode>`, `cin:<Mode>`, `vs:<Dir>`, `settarget`, `fire`, `cinoff`).
 
 ## Outputs
 

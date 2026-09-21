@@ -526,6 +526,7 @@ cadences). File = the capture whose raw rows are the reference.
 | N1 | a freshly loaded campaign mission has the player ship parked at the scripted placement (speed 0, green alert, full hull/shields, no target) and it stays parked for 90 s without input | exact | `scene_*` (11 missions) |
 | N2 | every non-player object spawns at red alert (E1M1's dock scene: green) with full hull and shields; ambient traffic runs `AvoidObstacles` at 4.0 GU/s; nothing is hidden, cloaked or dying at t = 0 | exact / ±2 % | `scene_*` |
 | N3 | per-mission cast, placements and 90 s autonomous evolution as tabulated in §13 / `docs/mission-scenes.md` (E2M6 fight, E3M2 Warbird warps out by 30 s, E4M5 Enterprise arrives at 46 s) | ±5 GU, ±5 s | `scene_E2M6`, `scene_E3M2`, `scene_E4M5` |
+| V6 | camera-mode stations scale with the watched object's `GetRadius()`: Chase/ReverseChase 4.0 R astern/ahead + 0.1 R up, Target 3.97 R + 0.48 R, ZoomTarget 4.0 R_target short of the target, ViewscreenZoomTarget 8.0 R_target, CinematicReverseTarget 3.97 R_source beyond the source, WideTarget 31.6 R + 4.9 R; FreeOrbit absolute 75 GU; sweeps settle in 1.0 s; viewscreen directions at the model hardpoints (§12.1a) | ±2 % | `cam_galaxy_space_modes`, `cam_galaxy_cin_modes`, `cam_galaxy_viewscreen`, `cam_galaxy_torpcam` |
 | V5 | player warp camera choreography: pre-warp cutscene camera 30.8 GU astern within 0.2 s of `Play()`, stays put while the ship streaks away; bridge viewscreen from 2.0 s after the ship enters the warp set until 0.6 s before it leaves; destination cutscene camera 53 GU ahead of the placement, aimed at the arriving ship, live 0.6 s before the ship appears; external Chase view and control back 2.0 s after arrival | ±0.2 s, ±1 GU | `warpcam_galaxy` |
 
 ---
@@ -538,9 +539,9 @@ cadences). File = the capture whose raw rows are the reference.
   Kessok, BoP survived at 5.2 GU/s — no clean constant).
 * Mission scenes: 11 of 26 missions sampled (§13); the rest, and what the
   scenes do beyond 90 s / after the player acts, are not.
-* Camera: the bridge (viewscreen) cameras and the remaining `Camera.py`
-  modes (Reverse, Map, ZoomTarget, Placement, Locked, FirstPerson) are not
-  yet sampled; §12 covers Chase, Target, cinematic DropAndWatch and the warp.
+* Camera: the nav-map `Map` mode, scripted `Placement`/`Locked`/`FirstPerson`
+  cutscene modes and TorpCam's torpedo-relative offset (the torpedo itself is
+  not sampled) remain; §12 covers every mode the player can select.
 * Shield regen vs a reactor that cannot supply the generator's
   `NormalPowerPerSecond` (only the generator's own power-wanted was varied).
 * AI: the Warbird AI crashes the game (Bird of Prey, also a cloaker, does
@@ -676,6 +677,47 @@ from the first sample (`bv=0 tv=1`) regardless of `ForceBridgeVisible`.
   ship**, aimed at it, starting above and to port (8.2, −2.3, +12.5 in
   world axes) and drifting round the ship at an accelerating rate (63° in
   9 s). Tactical view is hidden (`tv=0`) and input is off.
+
+
+### 12.1a The rule behind the numbers: mode attributes are in ship radii
+
+`CameraModes.py` defines Chase as `Distance 4.0`, `DefaultPosition (0, −1,
+0.1)`; the Galaxy's `GetRadius()` is **4.366** (meta `player_radius`), and
+4.0 × 4.366 = 17.46 = the measured 17.47, with the 0.1 giving the 1.74 rise.
+Every Chase/Target-family mode scales its distances by the **radius of the
+object it watches** (`cam_galaxy_{space_modes,cin_modes,viewscreen}`, the
+player targeting the Kessok Heavy, radius 6.174, 300 GU dead ahead):
+
+| mode (how the game reaches it) | station, measured | in radii | aimed at |
+|---|---|---|---|
+| Chase (`InvalidSpace → Chase`) | 17.38 astern, 1.74 up | 4.0 R, 0.1 R (player) | player |
+| ReverseChase (tactical "reverse" key) | 17.38 **ahead**, 1.74 up | 4.0 R, 0.1 R | player, looking aft |
+| Target (a target exists) | 17.34 astern, 2.09 up | 3.97 R, 0.48 R | player (+ target framed) |
+| ZoomTarget (tactical zoom) | 275.3 ahead = **24.7 GU short of the target** | 4.0 × R_target (6.174) | the target, from the player's side |
+| ViewscreenZoomTarget (bridge viewscreen, target selected) | 250.6 ahead = 49.4 GU short of the target | 8.0 × R_target | the target |
+| CinematicReverseTarget (cinematic "Reverse Cyclable View") | 324.5 ahead = **24.5 GU beyond the Source** (the Kessok), 2.93 up | 3.97 × R_source, 0.47 × R_source | the player, looking back past the source |
+| WideTarget (cinematic "Wide Target View") | 138.05 astern, 21.57 up | 31.6 R, 4.9 R (attributes 32 / 1.25) | player |
+| FreeOrbit (cinematic "Free Orbit View", a Map mode) | 74.63 astern, 7.46 up = **75.00 GU** | absolute: `Distance 75` | player, pitched −6° |
+| DropAndWatch (cinematic "Flyby View") | 15.15 GU on a fresh start, 18.6 and drifting 1.5 GU/s when entered from another mode | dynamic (`AnticipationTime 2.5`, `SideOffset 3`) | player |
+| TorpCam (cinematic "Torpedo View") | follows the player's torpedo: 140.65 ahead when a photon fired at a target 150 GU away expires; Chase again 2.0 s after the torpedo is gone (`DelayAfterTorpGone`) | `StartDistance 4 → LaterDistance 8` over 6 s | the torpedo |
+
+Every switch settles in **exactly 1.0 s** (`SweepTime 1.0`; the first sample
+at the final station is 1.00–1.06 s after the key), except ZoomTarget's
+sibling ViewscreenZoomTarget and the six viewscreen directions, which snap
+(`SweepTime 0`). Chase's `MaxLagDist 2.0` (= 8.7 GU) is the cap on the
+speed lag of §12.1; the measured 1.80 GU at 6.3 GU/s is well inside it.
+
+**Bridge viewscreen directions** (`ViewscreenDirection`, `Locked` modes at
+the ship model's `Viewscreen*` hardpoints — Galaxy, GU, ship frame):
+
+| mode | camera position (ahead, to port, up) | looks |
+|---|---|---|
+| ViewscreenForward | 2.90, 0, 0.50 | forward |
+| ViewscreenLeft | 2.00, 2.20, 0.50 | to port |
+| ViewscreenRight | 2.00, −2.20, 0.50 | to starboard |
+| ViewscreenBack | 0, 0, 0.56 | aft |
+| ViewscreenUp | 2.00, 0, 0.70 | up |
+| ViewscreenDown | 2.00, 0, 0.00 | down |
 
 ### 12.2 What the viewer sees during a player set-to-set warp (`warpcam_galaxy`)
 
