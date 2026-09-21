@@ -823,3 +823,180 @@ script globals — a module alias or a C handle in a global pops the debug
 console and freezes the game; E1M1 does not save, the rest do); the
 freeze-detector budget is the mission `duration` + 23 s; and the driver's
 `PrintWindow` screenshot blocks on a frozen window — use a desktop capture.
+
+
+---
+
+## 14. Weapon visuals — how each effect is built
+
+Read from the SDK scripts (`ships/Hardpoints/*.py`, `Tactical/Projectiles/*.py`,
+`Effects.py`, `LoadTacticalSounds.py`, `Tactical/EffectTextures.py`) and the
+asset files in the game copy; nothing here needed a launch. The renderers
+themselves are engine code — the scripts only choose assets and set the
+levers below, so a remake reproduces the *parameters*, not a script.
+
+### 14.1 Beams: phasers, beam disruptors, tractor beams (one renderer)
+
+A beam is a **hardpoint property** on the ship (`PhaserProperty` for every
+beam weapon regardless of species, `TractorBeamProperty` for tractors),
+created in the hardpoint file and registered with
+`g_kModelPropertyManager.RegisterLocalTemplate`. The engine draws it as a
+**tube of `NumSides` sides from the emitter to the hit point**, made of two
+nested layers — an outer *shell* and an inner *core* — each with a colour
+at the emitter end and at the far end, and a scrolling grey texture that
+multiplies the colours:
+
+| lever (`PhaserProperty.Set…`) | Galaxy value | what it does |
+|---|---|---|
+| `TextureName` | `data/phaser.tga` | 64 × 32, 24-bit **greyscale noise** (rows average 167–240); the beam's brightness modulation. Species colour is *not* in the texture |
+| `PhaserTextureStart` / `End` | 0 / 7 | the band of **1-pixel rows** of that texture the beam cycles through: Federation 0–7, Cardassian 8–15, Klingon and Cardassian stations 16–23, Romulan and Kessok 24–31 (the whole 32-row image is divided into four 8-frame animations) |
+| `TextureSpeed` | 2.5 | scroll rate of the texture along the beam (Sovereign 2.0) |
+| `LengthTextureTilePerUnit` | 0.5 | texture repeats per GU of beam length (Sovereign 1.0) |
+| `PerimeterTile` | 1.0 | repeats around the circumference |
+| `NumSides` | 6 | tube cross-section |
+| `MainRadius` | 0.15 GU | shell radius (Marauder 0.30, Shuttle 0.02) |
+| `CoreScale` | 0.5 | core radius as a fraction of the shell (Marauder 0.2, Sunbuster 0.3) |
+| `TaperRadius`, `TaperRatio`, `TaperMinLength`, `TaperMaxLength` | 0.01, 0.25, 5, 30 | the beam narrows to `TaperRadius` over the last `TaperRatio` of its length, the tapered part clamped to 5–30 GU |
+| `PhaserWidth` | 0.3 | the beam's collision/hit width (every stock beam 0.3) |
+| `OuterShellColor`, `InnerShellColor`, `OuterCoreColor`, `InnerCoreColor` | see below | RGBA at the two ends of each layer |
+| `Width`, `Length` | 1.33, 1.01 | the emitter's firing-arc extents, not the drawn beam |
+| `FireSound` | `"Galaxy Phaser"` | the engine plays **`<name> Start`** then loops **`<name> Loop`** (`LoadTacticalSounds`: `sfx/Weapons/galaxy_phaser_a.wav` / `_b.wav`) |
+
+Species palettes (outer shell / inner shell / outer core / inner core, RGB 0–1):
+
+| beams | shell out | shell in | core out | core in | texture rows | sound |
+|---|---|---|---|---|---|---|
+| Federation phasers (Galaxy, Sovereign, Akira, Nebula, Ambassador, stations, shuttles) | 1.00 0.16 0.00 | same | 0.99 0.83 0.64 | 0.99 0.90 0.86 | 0–7 | `Galaxy Phaser` / `Akira Phaser` / `Ambassador Phaser` |
+| Cardassian beams (Galor, Keldon, hybrid) | 1.00 0.50 0.00 | 1.00 0.50 0.25 | 1.00 1.00 0.00 | 1.00 1.00 0.50 | 8–15 | `Galor Phaser` / `Card Phaser` |
+| Cardassian stations | 0.50 0.25 0.00 | 0.50 0.50 0.00 | 1.00 1.00 0.00 | 1.00 1.00 0.50 | 16–23 | `Galor Phaser` |
+| Klingon beam (Vor'cha "Disruptor") | 0.50 0.00 0.00 | same | 1.00 0.00 0.00 | 1.00 0.50 0.50 | 16–23 | `Vorcha Phaser` |
+| Romulan beam (Warbird "Disruptor") | 0.00 0.50 0.00 | 0.00 0.50 0.25 | 0.50 1.00 0.00 | 0.50 1.00 0.50 | 24–31 | `Warbird Phaser` (`romulan phaser_a/b.wav`) |
+| Kessok Heavy beam | 0.00 0.00 1.00 | 0.00 0.50 1.00 | 0.00 1.00 1.00 | 0.50 1.00 1.00 | 24–31 | `Kessok Phaser2` (`kessock beam2_a/b.wav`) |
+| Kessok Light beam | 0.00 0.50 0.75 | 0.00 0.50 1.00 | 0.50 1.00 1.00 | 0.00 1.00 1.00 | 24–31 | `Kessok Phaser` |
+| Ferengi Marauder | 1.00 0.50 0.00 | 0.50 0.25 0.00 | 1.00 0.50 0.25 | 1.00 1.00 1.00 | 8–15 | `Marauder Phaser` |
+| **Tractor beam** (every ship) | 0.40 0.40 1.00 | same | same | same | row **32** of `data/Textures/Tactical/TractorBeam.tga` | `Tractor Beam` (`sfx/Weapons/tractor.wav`) |
+
+The tractor is the same tube with `TractorBeamWidth 0.3`, a 64 × 64 texture
+that is pure white with an alpha-noise pattern (alpha 84–131 per row), a
+single texture row (`TextureStart = TextureEnd = 32`) so it does not
+animate, and one flat blue-violet colour for all four colour slots.
+`data/Textures/Tactical/PhaserLights.tga` (32 × 32 radial white sprite,
+centre α 251 → edge 15) is the only other beam asset in the folder; it is
+not referenced from any script, so it is the engine's emitter glow.
+
+Beam identification for a remake: emitter = hardpoint name (`"Ventral
+Phaser 3"`), position (`SetPosition`), orientation and arcs; look = the
+row band + four colours + radii above; sound = `FireSound` + " Start"/" Loop".
+
+### 14.2 Torpedoes (`Torpedo.CreateTorpedoModel`)
+
+A torpedo has no mesh. Each projectile script in `Tactical/Projectiles/`
+(selected by the tube's ammo type, `TorpedoTubeProperty` → `GetName()` /
+`GetLaunchSpeed()` / `GetLaunchSound()` / damage etc., see §4) calls
+`CreateTorpedoModel` with 14 positional arguments that build **three sprite
+layers** at the projectile's position (argument meanings from the
+community's torpedo-modding guide, the SDK carries no names):
+
+| # | Photon | Quantum | argument |
+|---|---|---|---|
+| 1 | `data/Textures/Tactical/TorpedoCore.tga` | same | **core** sprite: 32 × 32 white, alpha 255 at the centre → 0 at the edge (a hard dot) |
+| 2 | core colour 255,252,100 (yellow-white) | 255,252,100 | core RGBA (multiplies the white sprite) |
+| 3 | 0.2 | 0.2 | core scale relative to the whole |
+| 4 | 1.2 | 1.0 | rotation rate (spins the flare layer) |
+| 5 | `TorpedoGlow.tga` | same | **glow** sprite: 32 × 32 white, alpha 160 centre → 0 edge (soft halo) |
+| 6 | glow colour 255,65,0 (orange) | 61,98,239 (blue) | glow RGBA — *this* is the species colour |
+| 7 | 3.0 | 4.0 | glow pulse rate |
+| 8 | 0.3 | 0.3 | minimum glow size |
+| 9 | 0.6 | 0.6 | maximum glow growth |
+| 10 | `TorpedoFlares.tga` | same | **flares**: 32 × 64 white streak sprite (alpha 255 centre line → ~2 edges) |
+| 11 | flare colour = glow colour | = glow colour | flare RGBA |
+| 12 | 8 | 12 | maximum number of flares spawned from the core |
+| 13 | 0.7 | 0.5 | flare length |
+| 14 | 0.4 | 0.4 | flare lifespan before respawn |
+
+Every stock torpedo uses the same three textures; only colours, counts and
+speeds differ:
+
+| script | core RGB | glow RGB (flares = glow unless noted) | speed GU/s | launch sound (`sfx/Weapons/…`) |
+|---|---|---|---|---|
+| `PhotonTorpedo`, `PhotonTorpedo2` | 255,252,100 | 255,65,0 | 19 | `Photon Torpedo` (`Photon Torp.wav`) |
+| `QuantumTorpedo` | 222,222,253 | 61,98,239 | 22 | `Quantum Torpedo` |
+| `KlingonTorpedo` | 250,218,202 | 190,49,48 | 10 | `Klingon Torpedo` |
+| `CardassianTorpedo` | 250,200,202 | 255,45,0 | 15 | `Cardassian Torpedo` |
+| `PositronTorpedo` / `2` (Kessok) | 181,230,253 | 65,82,255 (flares 236,255,17) | 3.8 / 5.0 | `Positron Torpedo` |
+| `AntimatterTorpedo` | 240,60,10 | 180,40,40 (flares 80,120,70) | 35 | `Antimatter Torpedo` |
+| `PhasedPlasma` | 240,0,15 | 100,40,40 (flares 80,60,70) | 12 | `Antimatter Torpedo` |
+
+The composite is: hard core-coloured dot, pulsing coloured halo (size cycling
+between #8 and #8+#9 at rate #7), `#12` coloured streaks rotating about the
+core at rate #4 and respawning every `#14` s. Launch sound = `GetLaunchSound()`; flight: §4 (Photon guidance 6 s,
+0.15 rad/s² turn).
+
+### 14.3 Pulse bolts (`Torpedo.CreateDisruptorModel`)
+
+Pulse weapons (`PulseWeaponProperty` on the hardpoint: `FireSound
+"Pulse Disruptor"` = `sfx/Weapons/Pulse Disruptor.wav`, `MaxDamage`,
+charge — §3) fire projectiles from the same `Tactical/Projectiles`
+scripts, whose `Create` calls `CreateDisruptorModel(outerShellColor,
+outerCoreColor, length, width)` — a **two-colour elongated bolt** (shell
+around a brighter core), no texture:
+
+| bolt script | shell | core | length × width | speed GU/s | lifetime s | launch sound |
+|---|---|---|---|---|---|---|
+| `Disruptor` (Klingon) / `RomulanCannon` | 0.01 1.00 0.01 (green) | 0.64 1.00 0.64 | 2.0 × 0.2 | 43 | 8 | `Klingon Disruptor` (`Disruptor Cannon.wav`) |
+| `PulseDisruptor` (Bird of Prey) | 0.17 1.00 0.17 | 0.64 1.00 0.64 | 1.8 × 0.15 | 55 | 8 | `Klingon Disruptor` |
+| `CardassianDisruptor` | 1.00 0.00 0.00 (red) | 1.00 0.17 0.17 | 1.8 × 0.15 | 42 | 10 | `Klingon Disruptor` |
+| `FusionBolt` (Ferengi) | 1.00 0.38 0.00 (orange) | 1.00 0.87 0.66 | 2.8 × 0.17 | 46 | 8 | `Klingon Disruptor` |
+| `KessokDisruptor` | 0.17 0.17 1.00 (blue) | 0.64 0.64 1.00 | **11 × 0.6** | 27 | 12 | `Cardassian Torpedo` |
+
+(the length/width reading of arguments 3–4 is the community's; the values
+scale exactly as the on-screen bolts do — the Kessok bolt is the 5× longer,
+3× fatter one.)
+
+### 14.4 Impacts — what is composited on a hit
+
+The engine raises the hit and calls the Python hooks in `Effects.py`
+(`TorpedoShieldHit`, `TorpedoHullHit`, `PhaserHullHit`; the shield flare for
+beams is engine-side using `data/Textures/Tactical/shieldhit01–04.TGA`,
+four 32 × 32 inverse-radial masks — dark centre, bright rim — stamped on the
+shield surface at the hit point). Everything below is emitted **at the hit
+point, along the hit normal, attached to the target's node** (`GetObjectHitPoint`,
+`GetObjectHitNormal`), and scaled by the *weapon's* `DamageRadiusFactor` × the
+target radius (`pEvent.GetRadius()`, the same radius that sets the damage
+footprint in §6):
+
+| hit | always | at effect level ≥ MEDIUM | sound |
+|---|---|---|---|
+| torpedo on shields | `CreateWeaponExplosion(radius × 3, life 1.25 s)` | — | random `Explosion 1–19` (`sfx/Explosions/explo1–19.WAV`), 3-D at the target |
+| torpedo on hull | same explosion | 50 %: sparks 1.0 s; 20 %: smoke jet 1–3 s starting 0.5 s later | same |
+| beam on hull | only on 50 % of hits: 50 % of those get an explosion (radius × 2, 1.0 s) with sound | 50 %: sparks; 30 %: smoke jet | with the explosion only |
+
+`CreateWeaponExplosion` at HIGH detail is an `AnimTSParticleController`
+"puff": particles emitted from a radius of 0.25 × size every 0.09 s for
+1.5 s, growing 0.1 → 0.5 → 1.6 → 2.0 × size over their life, colour white
+until 60 % then fading to (5, 5, 35)/255, alpha 1 → 0.5 at 70 % → 0; texture
+`data/Textures/Effects/ExplosionA.tga` (256 × 256, an 8 × 8 animated sheet,
+additive blend) 70 % of the time, else `ExplosionB.tga`; on 50 % of HIGH hits
+2–7 extra "plume" emitters in a 120° cone at 0.2 × size. MEDIUM uses a
+lighter puff with plumes on 10 %; LOW a single puff. Sparks are a
+`SparkParticleController` on `data/rough.tga`: 2.5 GU/s, 120° variance, tails
+0.1–0.2, size 0.01 → 0.04 → 0.01, white→fade, damping 0.3, emit every 5 ms
+for the duration. Smoke is `CreateSmokeHigh` on `ExplosionB.tga`.
+
+Ship death (`ObjectExploding` / `CreateObjectExplosion`) reuses the same
+puff/plume/smoke builders at the ship's radius with `Death Explosion 1–6`
+(`explo_flame_01–06.WAV`) — not weapon VFX, noted for completeness.
+
+### 14.5 Asset inventory (the game copy, `data/`)
+
+| file | size | used by |
+|---|---|---|
+| `phaser.tga` | 64 × 32, 24-bit grey | every beam weapon (row bands per species) |
+| `Textures/Tactical/TractorBeam.tga` | 64 × 64, white + alpha noise | tractor beams (row 32) |
+| `Textures/Tactical/PhaserLights.tga` | 32 × 32 radial | engine beam glow (no script reference) |
+| `Textures/Tactical/TorpedoCore.tga`, `TorpedoGlow.tga` | 32 × 32 radial | torpedo core / halo |
+| `Textures/Tactical/TorpedoFlares.tga` | 32 × 64 streak | torpedo flares |
+| `Textures/Tactical/shieldhit01–04.TGA` | 32 × 32 inverse radial | shield impact stamp (engine) |
+| `Textures/Effects/ExplosionA.tga` (RLE), `ExplosionB.tga` | 256 × 256 sheets | hit puffs, plumes, smoke, death |
+| `rough.tga`, `spark.tga`, `sphere.tga` | 64 × 64 | sparks (space), bridge sparks/smoke |
+| `sfx/Weapons/*.wav`, `sfx/Explosions/explo*.WAV` | — | `LoadTacticalSounds` name → file table |
