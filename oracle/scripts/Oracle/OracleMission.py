@@ -80,6 +80,9 @@ def _read_inputs():
     P["gen_frac"]     = _getf("gen_frac", -1.0)         # target ShieldGenerator condition fraction
     P["ai"]           = int(_getf("ai", 0))             # 1 = leave the QuickBattle AI on the attacker
     P["ai_level"]     = _getf("ai_level", 0.5)          # BasicAttack Difficulty 0.0 / 0.5 / 1.0
+    P["ai_module"]    = _gets("ai_module", "none")
+    P["face_away"]    = _gets("face_away", "0")
+    P["ai_patch"]     = _gets("ai_patch", "none")        # with ai_module: "17,13" stub those BuilderCreateN with a Stay AI; "22=pass" return the wrapped AI          # 1: place the attacker facing away from the target (aft weapons bear)       # replace the QB AI with <module>.CreateAI(ship, friendlies, Difficulty=, UseCloaking=) (crash bisection)
     P["ai_log"]       = int(_getf("ai_log", 0))         # 1 = ArtificialIntelligence_LogAITree("AITree.txt") (armed in OracleGame)
     P["target_motion"] = _gets("target_motion", "none")  # none|impulse|yaw|warp|warpset : player ship drives itself at act time
     P["sample"]       = _gets("sample", "attacker")      # attacker|target : which ship row c follows
@@ -347,7 +350,26 @@ def _OracleStartSimulation2(pObject, pEvent):
         if g_pAttacker is None:
             _log.mark("no_attacker", "1")
             return
-        if P["ai"]:
+        if P["ai"] and P["ai_module"] != "none":
+            try:
+                g_pAttacker.ClearAI()
+                parts = string.split(P["ai_module"], ".")
+                mod = __import__(P["ai_module"], {}, {}, [parts[-1]])
+                if P["ai_patch"] != "none":
+                    for item in string.split(P["ai_patch"], ","):
+                        j = string.find(item, "=")
+                        if j >= 0:
+                            setattr(mod, "BuilderCreate" + item[:j], _BuilderPass(item[:j]))
+                        else:
+                            setattr(mod, "BuilderCreate" + item, _BuilderStay(item))
+                    _log.mark("ai_patch", P["ai_patch"])
+                pGroup = App.ObjectGroup_FromModule("QuickBattle.QuickBattle", "pFriendlies")
+                pAI = mod.CreateAI(g_pAttacker, pGroup, Difficulty=P["ai_level"], FollowTargetThroughWarp=1, UseCloaking=1)
+                g_pAttacker.SetAI(pAI)
+                _log.mark("ai_replaced", "%s -> %s" % (P["ai_module"], str(pAI)))
+            except:
+                _log.mark("ai_replace_error", _log.exc())
+        elif P["ai"]:
             _log.mark("ai_kept", "level=%.2f" % P["ai_level"])
         else:
             g_pAttacker.ClearAI()
@@ -369,6 +391,8 @@ def _OracleStartSimulation2(pObject, pEvent):
         az = r * math.sin(e)
         n = (ax * ax + ay * ay + az * az) ** 0.5
         fx, fy, fz = -ax / n, -ay / n, -az / n
+        if P["face_away"] == "1":
+            fx, fy, fz = -fx, -fy, -fz
         # Up must be perpendicular to forward or the engine re-derives the
         # frame and the nose ends up off the target (elev 45 fired only the
         # dorsal pair).  Gram-Schmidt world-up against forward.
@@ -754,6 +778,26 @@ def _OraclePulseCreate(pTorp):
     _log.mark("vfx_pulse_created", "1")
     return 0
 
+class _BuilderStay:
+    """Replaces CloakAttack.BuilderCreateN: a PlainAI running the Stay script (does nothing)."""
+    def __init__(self, n):
+        self.n = n
+    def __call__(self, pShip, *args):
+        pAI = App.PlainAI_Create(pShip, "Stub" + self.n)
+        pAI.SetScriptModule("Stay")
+        pAI.SetInterruptable(1)
+        return pAI
+
+class _BuilderPass:
+    """Replaces a wrapper builder: return the first AI among its arguments unchanged."""
+    def __init__(self, n):
+        self.n = n
+    def __call__(self, pShip, *args):
+        for a in args:
+            if hasattr(a, "SetInterruptable"):
+                return a
+        return App.PlainAI_Create(pShip, "Stub" + self.n)
+
 class _Counted:
     """Wrap an Effects.py function: count calls, remember the first few hit radii."""
     def __init__(self, name, fn):
@@ -916,6 +960,26 @@ def _cam_step(step):
     elif kind == "stopfire":
         # with cam_step_s 0.5 after "fire": one torpedo (tubes are 0.656 s apart)
         g_pTarget.GetTorpedoSystem().StopFiring()
+    elif kind == "killbeams":
+        g_pAttacker.GetPhaserSystem().SetCondition(0.0)
+        _log.mark("killbeams", "1")
+    elif kind == "killtorps":
+        g_pAttacker.GetTorpedoSystem().SetCondition(0.0)
+        _log.mark("killtorps", "1")
+    elif kind == "wait":
+        pass
+    elif kind == "cleartarget":
+        g_pAttacker.SetTarget(None)
+        _log.mark("cleartarget", "t=%.3f" % (App.g_kUtopiaModule.GetGameTime() - g_t0))
+    elif kind == "cloak":
+        pC = g_pAttacker.GetCloakingSubsystem()
+        _log.mark("cloak", "sub=%s" % str(pC))
+        if pC is not None:
+            pC.StartCloaking()
+    elif kind == "decloak":
+        pC = g_pAttacker.GetCloakingSubsystem()
+        if pC is not None:
+            pC.StopCloaking()
     elif kind == "cinoff":
         App.TGScriptAction_Create("Actions.CameraScriptActions", "StopCinematicMode").Play()
     elif kind == "space":
@@ -1210,7 +1274,7 @@ def _camera_row(t):
             _log.mark("cam_error", _log.exc())
 
 def OnSample(pObject, pEvent):
-    global g_rows
+    global g_rows, g_last_row
     if g_done:
         return
     try:
@@ -1264,10 +1328,22 @@ def OnSample(pObject, pEvent):
                         except:
                             pass
                     extra = " rng=%.3f tgt=%s fire=%s" % (_range(), tn, fs or "-")
+                    try:
+                        pC = pS.GetCloakingSubsystem()
+                        if pC is not None:
+                            extra = extra + " ck=%d%d" % (int(pC.IsCloaked()), int(pC.IsCloaking() or pC.IsDecloaking()))
+                        extra = extra + " tp=%d" % len(g_pSet.GetClassObjectList(App.CT_TORPEDO))
+                    except:
+                        pass
                 except:
                     extra = " rng=%.3f" % _range()
             if P["weapon"] == "tractor" and g_acted:
                 extra = extra + _tractor_state()
+            if not P["ai"]:
+                try:
+                    extra = extra + " tp=%d" % len(g_pSet.GetClassObjectList(App.CT_TORPEDO))
+                except:
+                    pass
             if not P["ai"]:
                 # impulse command fraction and the engine's actual power fraction
                 try:
@@ -1288,8 +1364,10 @@ def OnSample(pObject, pEvent):
                 extra = extra + " set=%s" % setname
             except:
                 pass
-            _log.row("c t=%.4f p=%s v=%s w=%s fw=%s sp=%.4f%s" % (
-                t, _p3(p), _p3(v), _p3(w), _p3(f), sp, extra))
+            line = "c t=%.4f p=%s v=%s w=%s fw=%s sp=%.4f%s" % (
+                t, _p3(p), _p3(v), _p3(w), _p3(f), sp, extra)
+            _log.row(line)
+            g_last_row = line[-120:]
         if string.find(P["rows"], "d") >= 0:
             _camera_row(t)
         g_rows = g_rows + 1

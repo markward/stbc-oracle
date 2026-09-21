@@ -170,7 +170,7 @@ def parse_row(line: str) -> dict:
             d[k] = [int(x) for x in v.split(",") if x != ""]
         elif k in ("tgt", "fire", "set", "ws", "rs", "cs", "mode", "fr", "cam", "name", "scr", "hull", "ai", "player", "err", "tr"):
             d[k] = v
-        elif k in ("isw", "bv", "tv", "cut", "cin", "pc", "n", "ships", "al", "pl", "hid", "clk", "dy"):
+        elif k in ("isw", "bv", "tv", "cut", "cin", "pc", "n", "ships", "al", "pl", "hid", "clk", "dy", "tp"):
             d[k] = int(v)
         elif k in ("shm",):
             d[k] = _floats(v)
@@ -408,6 +408,9 @@ def main(argv=None) -> int:
     ap.add_argument("--shot-count", type=int, default=1)
     ap.add_argument("--shot-every", type=float, default=0.25)
     ap.add_argument("--shot-delay", type=float, default=0.0)
+    ap.add_argument("--ai-patch", default="none", help="with --ai-module: BuilderCreate numbers to stub (N) or pass through (N=pass)")
+    ap.add_argument("--face-away", action="store_true", help="place the attacker facing away from the target")
+    ap.add_argument("--ai-module", default="none", help="with --ai: replace the Quick Battle AI by <module>.CreateAI (bisection)")
     ap.add_argument("--effects-wrap", action="store_true", help="count calls into Effects.py hit hooks (boot markers fx_*)")
     ap.add_argument("--vfx-patch", default="none", help="projectile model override: photon:<i>=<v>,<i>=<v> (1-based CreateTorpedoModel args) or pulse:<i>=<v> (CreateDisruptorModel args)")
     a = ap.parse_args(argv)
@@ -424,7 +427,7 @@ def main(argv=None) -> int:
         "time_scale": a.time_scale, "target_alert": a.target_alert, "tractor_mode": a.tractor_mode,
         "shield_power": a.shield_power, "gen_frac": a.gen_frac,
         "ai": 1 if a.ai else 0, "ai_level": a.ai_level, "ai_log": 1 if a.ai_log else 0,
-        "target_motion": a.target_motion, "target_fire": 1 if a.target_fire else 0, "sample": a.sample, "view": a.view, "warp_patch": a.warp_patch, "mission": a.mission, "cam_mode": a.cam_mode, "cam_step_s": a.cam_step_s, "vfx_patch": a.vfx_patch, "effects_wrap": "1" if a.effects_wrap else "0",
+        "target_motion": a.target_motion, "target_fire": 1 if a.target_fire else 0, "sample": a.sample, "view": a.view, "warp_patch": a.warp_patch, "mission": a.mission, "cam_mode": a.cam_mode, "cam_step_s": a.cam_step_s, "vfx_patch": a.vfx_patch, "effects_wrap": "1" if a.effects_wrap else "0", "ai_module": a.ai_module, "face_away": "1" if a.face_away else "0", "ai_patch": a.ai_patch,
         "warp_stop_gu": a.warp_stop_gu, "warp_time": a.warp_time, "warp_dest": a.warp_dest, "warp_clear": a.warp_clear,
     }
     result = run(a.oracle_dir, params, a.timeout, a.shot, a.shot_at, a.shot_on, a.shot_count, a.shot_every, a.shot_delay)

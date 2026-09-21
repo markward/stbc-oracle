@@ -580,10 +580,12 @@ cadences). File = the capture whose raw rows are the reference.
   scenes do beyond 90 s / after the player acts, are not.
 * Shield regen vs a reactor that cannot supply the generator's
   `NormalPowerPerSecond` (only the generator's own power-wanted was varied).
-* AI: the Warbird AI crashes the game (Bird of Prey, also a cloaker, does
-  not); AI versus a player who both moves *and* shoots; the engine's
-  `ArtificialIntelligence_LogAITree` is unusable here (armed after an AI
-  exists it kills the process, armed at boot it stalls the load).
+* AI: the cloaker `CloakAttack` tree kills the process after 44–107 s on
+  every cloaking ship (§11.5a, use-after-free with the target just
+  cleared; no single block is responsible); AI versus a player who both
+  moves *and* shoots; the engine's `ArtificialIntelligence_LogAITree` is
+  unusable here (armed after an AI exists it kills the process, armed at
+  boot it stalls the load).
 * Whether the Galaxy's own fire in the shooting run ever reached the
   Kessok's shields (attacker faces are not sampled yet).
 
@@ -650,9 +652,35 @@ Federation AIs slow killers.
 `NonFedAttack` with cloak available: reaction 4.0 s, pulse cannons and
 torpedoes from 150 GU, closest approach **36.9 GU**, speed **7.75 GU/s**
 (1.25 × 6.2), turns at **0.72 rad/s** (hardpoint max 0.5), all six faces
-down and hull −5531 in 90 s. The Warbird AI crashes the game reproducibly
-(jump to an invalid address shortly after the sim starts, `CloakAttack`
-branch) — open.
+down and hull −5531 in 90 s.
+
+### 11.5a The cloaker AI crash, characterised (`docs/results/ai_crash/`)
+
+The Quick Battle AI on a cloaking ship kills the process — it is not a
+Warbird quirk and not "shortly after start". With the heartbeat carrying
+the attacker's range / target / firing / cloak state every 0.5 s:
+
+| ship, AI | outcome | state at the last heartbeat |
+|---|---|---|
+| Warbird, stock QB AI (`CloakAttackWrapper`) | crash at t = 44, 64, 71 s in three runs, fault `A8B0ABA8` every time | 51–129 GU out, **target cleared**, not firing, not cloaked, 1–3 torpedoes in the set |
+| Vor'cha, stock QB AI | crash at 62 s, fault `FEFDFDFD` (freed-heap fill: a use-after-free) | 158 GU out, fleeing at 9.2 GU/s, target cleared |
+| Bird of Prey, `CloakAttack` | **process exits at 106.6 s** with no report — the 90 s capture of §11.5 simply ended first | 69 GU, firing, target set |
+| Warbird, `NonFedAttack` (no cloak tree) | **clean 90 s** | — |
+| Warbird, `CloakAttack` alone | crash at 84 s | 99 GU, target cleared |
+| Warbird, `CloakAttack` with `Flee` stubbed / the `Cloak` wrapper bypassed / `TooClose_ShortTime` bypassed / `FarEnough_TimeNotPassed` bypassed | crash at 78 / 82 / 79 / 52 s | target cleared each time |
+| Warbird, `CloakAttack`, phaser system dead | crash at 61 s, fault `A59F9BA6` | mid-cloak, target cleared |
+
+Exonerated by hand-driven runs (no AI, no crash): cloak → decloak → cloak;
+beams firing through a cloak (the beam keeps "firing" but delivers ~37/s
+instead of ~1700/s — cloaked weapons do no damage); beams on then the
+target cleared; an aft torpedo in flight with the target cleared. So the
+trigger needs the AI tree — every death has the ship's target freshly
+cleared with the fire block idle, and the fault addresses say freed memory
+— but no single removable block is responsible. Contract for a remake:
+nothing to reproduce; the §11 numbers for cloakers are valid for the
+pre-crash window, and a remake's own AI must not depend on this tree
+surviving. Harness: `ai_module`, `ai_patch` (stub `BuilderCreateN`),
+`killbeams`, `cleartarget`, `cloak`/`decloak`, `face_away`.
 
 ### 11.6 Engine facts the AI relies on
 
