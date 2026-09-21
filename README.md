@@ -97,7 +97,13 @@ run. Nothing in the stock script tree is modified.
 `cam_mode` steps the player camera through modes every `cam_step_s`
 (`space:<Mode>`, `cin:<Mode>`, `vs:<Dir>`, `map`, `placement`, `lockedsph`,
 `lockednormal`, `firstperson`, `pop`, `settarget`, `fire`/`stopfire`, `cinoff`);
-row `f` is the first torpedo in the sample ship's set.
+row `f` is the first torpedo in the sample ship's set. `vfx_patch`
+(`photon:<i>=<v>,…` / `pulse:<i>=<v>,…`, `5=<speed>` for bolts) replaces the
+projectile module's `Create` with one argument changed; `--shot-on <marker>
+--shot-count N --shot-every s --shot-delay s` takes a burst of screenshots
+once a boot marker appears (`oracle/vfx_measure.py` reduces them). Note
+`PrintWindow` returns an all-black frame now and then — bursts, not
+single shots.
 
 ## Outputs
 

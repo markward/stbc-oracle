@@ -84,6 +84,7 @@ def _read_inputs():
     P["target_motion"] = _gets("target_motion", "none")  # none|impulse|yaw|warp|warpset : player ship drives itself at act time
     P["sample"]       = _gets("sample", "attacker")      # attacker|target : which ship row c follows
     P["view"]         = _gets("view", "bridge")          # bridge|tactical : the player's view once the sim runs
+    P["vfx_patch"]    = _gets("vfx_patch", "none")       # photon:<i>=<v>,... | pulse:<i>=<v>,... : override projectile model args (see _apply_vfx_patch)
     P["cam_mode"]     = _gets("cam_mode", "none")        # comma list of camera steps applied every cam_step_s from act time (see _cam_step)
     P["cam_step_s"]   = _getf("cam_step_s", 4.0)
     P["warp_patch"]   = _gets("warp_patch", "none")      # comma list of WarpSequence player-branch camera steps to no-op (bisecting a crash)
@@ -660,6 +661,88 @@ def _warpset(pShip):
     except:
         _log.mark("warpset_error", _log.exc())
 
+# Stock argument lists of the projectile model calls (Tactical/Projectiles/PhotonTorpedo.py,
+# PulseDisruptor.py), overridden by index for the VFX verification runs.
+_PHOTON_ARGS = ["data/Textures/Tactical/TorpedoCore.tga", (255.0/255.0, 252.0/255.0, 100.0/255.0), 0.2, 1.2,
+                "data/Textures/Tactical/TorpedoGlow.tga", (255.0/255.0, 65.0/255.0, 0.0), 3.0, 0.3, 0.6,
+                "data/Textures/Tactical/TorpedoFlares.tga", (255.0/255.0, 65.0/255.0, 0.0), 8, 0.7, 0.4]
+_PULSE_ARGS = [(0.172549, 1.000000, 0.172549), (0.639216, 1.000000, 0.639216), 1.8, 0.15, 55.0]   # [4] = launch speed override
+g_vfx = [None, None]   # (kind, args)
+
+def _vfx_value(v):
+    if string.find(v, "/") >= 0:
+        parts = string.split(v, "/")
+        return (float(parts[0]) / 255.0, float(parts[1]) / 255.0, float(parts[2]) / 255.0)
+    if string.find(v, ".") >= 0:
+        return float(v)
+    return int(v)
+
+def _color(rgb):
+    k = App.TGColorA()
+    k.SetRGBA(rgb[0], rgb[1], rgb[2], 1.0)
+    return k
+
+def _OraclePhotonCreate(pTorp):
+    a = g_vfx[1]
+    pTorp.CreateTorpedoModel(a[0], _color(a[1]), a[2], a[3], a[4], _color(a[5]), a[6], a[7], a[8],
+                             a[9], _color(a[10]), a[11], a[12], a[13])
+    pTorp.SetDamage(500.0)
+    pTorp.SetDamageRadiusFactor(0.13)
+    pTorp.SetGuidanceLifetime(6.0)
+    pTorp.SetMaxAngularAccel(0.15)
+    import Multiplayer.SpeciesToTorp
+    pTorp.SetNetType(Multiplayer.SpeciesToTorp.PHOTON)
+    _log.mark("vfx_photon_created", "1")
+    return 0
+
+def _OraclePulseCreate(pTorp):
+    a = g_vfx[1]
+    pTorp.CreateDisruptorModel(_color(a[0]), _color(a[1]), a[2], a[3])
+    pTorp.SetDamage(220.0)
+    pTorp.SetDamageRadiusFactor(0.15)
+    pTorp.SetGuidanceLifetime(0.0)
+    pTorp.SetMaxAngularAccel(0.025)
+    pTorp.SetLifetime(8.0)
+    import Multiplayer.SpeciesToTorp
+    pTorp.SetNetType(Multiplayer.SpeciesToTorp.DISRUPTOR)
+    _log.mark("vfx_pulse_created", "1")
+    return 0
+
+def _OraclePulseSpeed():
+    return g_vfx[1][4]
+
+def _apply_vfx_patch():
+    """vfx_patch = photon:3=1.0,12=0  or  pulse:3=6.0 : replace the projectile
+    module's Create with one that calls the model builder with the overrides."""
+    spec = P["vfx_patch"]
+    if spec == "none":
+        return
+    try:
+        i = string.find(spec, ":")
+        kind = spec[:i]
+        if kind == "photon":
+            args = _PHOTON_ARGS[:]
+            import Tactical.Projectiles.PhotonTorpedo
+            mod = Tactical.Projectiles.PhotonTorpedo
+            fn = _OraclePhotonCreate
+        else:
+            args = _PULSE_ARGS[:]
+            import Tactical.Projectiles.PulseDisruptor
+            mod = Tactical.Projectiles.PulseDisruptor
+            fn = _OraclePulseCreate
+        if spec[i + 1:] != "stock":
+            for item in string.split(spec[i + 1:], ","):
+                j = string.find(item, "=")
+                args[int(item[:j]) - 1] = _vfx_value(item[j + 1:])
+        g_vfx[0] = kind
+        g_vfx[1] = args
+        mod.Create = fn
+        if kind == "pulse" and args[4] != 55.0:
+            mod.GetLaunchSpeed = _OraclePulseSpeed
+        _log.mark("vfx_patch", spec)
+    except:
+        _log.mark("vfx_patch_error", _log.exc())
+
 def _cam_step(step):
     """One camera step, mirroring the stock key handlers:
        space:<Mode>   TacticalInterfaceHandlers -> AddModeHierarchy("InvalidSpace", Mode)
@@ -680,6 +763,11 @@ def _cam_step(step):
     elif kind == "fire":
         g_pTarget.SetTarget(g_pAttacker.GetName())
         g_pTarget.GetTorpedoSystem().StartFiring(g_pAttacker)
+    elif kind == "firepulse":
+        g_pTarget.SetTarget(g_pAttacker.GetName())
+        g_pTarget.GetPulseWeaponSystem().StartFiring(g_pAttacker)
+    elif kind == "stoppulse":
+        g_pTarget.GetPulseWeaponSystem().StopFiring()
     elif kind == "stopfire":
         # with cam_step_s 0.5 after "fire": one torpedo (tubes are 0.656 s apart)
         g_pTarget.GetTorpedoSystem().StopFiring()
@@ -725,9 +813,13 @@ def _cam_step(step):
             pPl.UpdateNodeOnly()
         Camera.Placement("OraclePlacement", g_pTarget.GetName(), pSet.GetName())
     elif kind == "lockedsph":
-        # LockedSphericalLookCenter(target, degrees around, degrees height, distance)
+        # LockedSphericalLookCenter(target, degrees around, degrees height, distance); arg "a/h/d" overrides 45/30/40
         import Camera
-        Camera.LockedSphericalLookCenter(g_pTarget.GetName(), 45.0, 30.0, 40.0)
+        sph = [45.0, 30.0, 40.0]
+        if arg != "":
+            parts = string.split(arg, "/")
+            sph = [float(parts[0]), float(parts[1]), float(parts[2])]
+        Camera.LockedSphericalLookCenter(g_pTarget.GetName(), sph[0], sph[1], sph[2])
     elif kind == "lockednormal":
         import Camera
         vP = App.TGPoint3(); vP.SetXYZ(10.0, 20.0, 5.0)       # model space: +Y is model forward
@@ -852,6 +944,7 @@ def OnAct(pObject, pEvent):
             _act_weapon()
         if P["motion"] != "none":
             _act_motion()
+        _apply_vfx_patch()
         _act_target()
         if P["cam_mode"] != "none":
             g_cam_steps = string.split(P["cam_mode"], ",")

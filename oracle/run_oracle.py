@@ -262,7 +262,11 @@ def summarise(result: dict) -> str:
 
 # --- main ---------------------------------------------------------------------
 def run(oracle_dir: Path, params: dict, timeout_s: float, shot: Path | None,
-        shot_at_s: float = 1e9) -> dict:
+        shot_at_s: float = 1e9, shot_on: str | None = None, shot_count: int = 1,
+        shot_every: float = 0.25, shot_delay: float = 0.0) -> dict:
+    """shot_on: take the shots once a boot marker's value contains this text
+    (e.g. "fire"), shot_delay seconds later, shot_count of them shot_every
+    seconds apart, as <shot>_<k>.png; else one shot at shot_at_s."""
     scrub_options(oracle_dir)
     check_windowed(oracle_dir)
     deploy_scripts(oracle_dir)
@@ -309,7 +313,19 @@ def run(oracle_dir: Path, params: dict, timeout_s: float, shot: Path | None,
                 if started and not finished and time.time() - last_boot_change > budget:
                     print("freeze suspected (no progress) - killing", flush=True)
                     break
-            if shot is not None and time.time() - t0 >= shot_at_s and not shot_taken:
+            if shot is not None and shot_on is not None and not shot_taken:
+                boot_now = parse_cfg_section(oracle_dir / BOOT_CFG, "OracleBoot") if (oracle_dir / BOOT_CFG).exists() else {}
+                if any(shot_on in v for v in boot_now.values()):
+                    time.sleep(shot_delay)
+                    ok = 0
+                    for k in range(shot_count):
+                        tk = time.time()
+                        if capture(shot.with_name(f"{shot.stem}_{k:02d}{shot.suffix}")):
+                            ok += 1
+                        time.sleep(max(0.0, shot_every - (time.time() - tk)))
+                    print(f"shots: {ok}/{shot_count} after marker '{shot_on}'", flush=True)
+                    shot_taken = True
+            elif shot is not None and time.time() - t0 >= shot_at_s and not shot_taken:
                 shot_taken = capture(shot)
             if sec.get("done") == "1":
                 done = True
@@ -388,6 +404,11 @@ def main(argv=None) -> int:
     ap.add_argument("--out", type=Path, help="write the parsed result as JSON here")
     ap.add_argument("--shot", type=Path, help="PNG of the game window (taken at --shot-at seconds, else at the end)")
     ap.add_argument("--shot-at", type=float, default=1e9)
+    ap.add_argument("--shot-on", default=None, help="take shots once a boot marker value contains this text")
+    ap.add_argument("--shot-count", type=int, default=1)
+    ap.add_argument("--shot-every", type=float, default=0.25)
+    ap.add_argument("--shot-delay", type=float, default=0.0)
+    ap.add_argument("--vfx-patch", default="none", help="projectile model override: photon:<i>=<v>,<i>=<v> (1-based CreateTorpedoModel args) or pulse:<i>=<v> (CreateDisruptorModel args)")
     a = ap.parse_args(argv)
 
     params = {
@@ -402,10 +423,10 @@ def main(argv=None) -> int:
         "time_scale": a.time_scale, "target_alert": a.target_alert, "tractor_mode": a.tractor_mode,
         "shield_power": a.shield_power, "gen_frac": a.gen_frac,
         "ai": 1 if a.ai else 0, "ai_level": a.ai_level, "ai_log": 1 if a.ai_log else 0,
-        "target_motion": a.target_motion, "target_fire": 1 if a.target_fire else 0, "sample": a.sample, "view": a.view, "warp_patch": a.warp_patch, "mission": a.mission, "cam_mode": a.cam_mode, "cam_step_s": a.cam_step_s,
+        "target_motion": a.target_motion, "target_fire": 1 if a.target_fire else 0, "sample": a.sample, "view": a.view, "warp_patch": a.warp_patch, "mission": a.mission, "cam_mode": a.cam_mode, "cam_step_s": a.cam_step_s, "vfx_patch": a.vfx_patch,
         "warp_stop_gu": a.warp_stop_gu, "warp_time": a.warp_time, "warp_dest": a.warp_dest, "warp_clear": a.warp_clear,
     }
-    result = run(a.oracle_dir, params, a.timeout, a.shot, a.shot_at)
+    result = run(a.oracle_dir, params, a.timeout, a.shot, a.shot_at, a.shot_on, a.shot_count, a.shot_every, a.shot_delay)
     print("hook markers:", ", ".join(k[3:] for k in result["hook"]))
     print("boot markers:")
     for k, v in result["boot"].items():

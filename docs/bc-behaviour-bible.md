@@ -527,6 +527,7 @@ cadences). File = the capture whose raw rows are the reference.
 | N2 | every non-player object spawns at red alert (E1M1's dock scene: green) with full hull and shields; ambient traffic runs `AvoidObstacles` at 4.0 GU/s; nothing is hidden, cloaked or dying at t = 0 | exact / ±2 % | `scene_*` |
 | N3 | per-mission cast, placements and 90 s autonomous evolution as tabulated in §13 / `docs/mission-scenes.md` (E2M6 fight, E3M2 Warbird warps out by 30 s, E4M5 Enterprise arrives at 46 s) | ±5 GU, ±5 s | `scene_E2M6`, `scene_E3M2`, `scene_E4M5` |
 | V6 | camera-mode stations scale with the watched object's `GetRadius()`: Chase/ReverseChase 4.0 R astern/ahead + 0.1 R up, Target 3.97 R + 0.48 R, ZoomTarget 4.0 R_target short of the target, ViewscreenZoomTarget 8.0 R_target, CinematicReverseTarget 3.97 R_source beyond the source, WideTarget 31.6 R + 4.9 R; absolute GU for FreeOrbit (75), Map (1000, 10 % up), TorpCam (4.00 behind the torpedo, Chase 2.0 s after it is gone), Placement / Locked (exact); FirstPerson at the hardpoint; sweeps settle in 1.0 s (TorpCam 2 s); viewscreen directions at the model hardpoints (§12.1a) | ±2 % | `cam_galaxy_space_modes`, `cam_galaxy_cin_modes`, `cam_galaxy_viewscreen`, `cam_galaxy_torpcam`, `cam_galaxy_script_modes` |
+| X1 | `CreateTorpedoModel` argument semantics (core scale, flare rotation/count/length/lifespan, glow base size / pulse rate / pulse amplitude) and `CreateDisruptorModel(shell, core, length, width)`, as tabulated in §14.2–14.3; projectile `GetRadius()` = sprite bound (photon 0.770, bolt = length/2) | ±5 % on radii | `docs/results/vfx/*` |
 | V5 | player warp camera choreography: pre-warp cutscene camera 30.8 GU astern within 0.2 s of `Play()`, stays put while the ship streaks away; bridge viewscreen from 2.0 s after the ship enters the warp set until 0.6 s before it leaves; destination cutscene camera 53 GU ahead of the placement, aimed at the arriving ship, live 0.6 s before the ship appears; external Chase view and control back 2.0 s after arrival | ±0.2 s, ±1 GU | `warpcam_galaxy` |
 
 ---
@@ -831,7 +832,8 @@ freeze-detector budget is the mission `duration` + 23 s; and the driver's
 
 Read from the SDK scripts (`ships/Hardpoints/*.py`, `Tactical/Projectiles/*.py`,
 `Effects.py`, `LoadTacticalSounds.py`, `Tactical/EffectTextures.py`) and the
-asset files in the game copy; nothing here needed a launch. The renderers
+asset files in the game copy; the unnamed model-builder arguments (§14.2,
+§14.3) were then verified on the exe. The renderers
 themselves are engine code — the scripts only choose assets and set the
 levers below, so a remake reproduces the *parameters*, not a script.
 
@@ -894,25 +896,34 @@ A torpedo has no mesh. Each projectile script in `Tactical/Projectiles/`
 (selected by the tube's ammo type, `TorpedoTubeProperty` → `GetName()` /
 `GetLaunchSpeed()` / `GetLaunchSound()` / damage etc., see §4) calls
 `CreateTorpedoModel` with 14 positional arguments that build **three sprite
-layers** at the projectile's position (argument meanings from the
-community's torpedo-modding guide, the SDK carries no names):
+layers** at the projectile's position. The SDK carries no argument names;
+the readings below were **verified on the exe** by replacing
+`PhotonTorpedo.Create` at runtime with one argument changed (`vfx_patch`),
+firing one photon under TorpCam (camera 4.00 GU behind it, §12.1a) and
+measuring 12 screenshots 0.25 s apart (`run_oracle.py --shot-on stopfire`,
+`oracle/vfx_measure.py`; frames and captures in `docs/results/vfx/`), plus
+the projectile's own `GetRadius()` — its bounding radius — in row `f`:
 
-| # | Photon | Quantum | argument |
-|---|---|---|---|
-| 1 | `data/Textures/Tactical/TorpedoCore.tga` | same | **core** sprite: 32 × 32 white, alpha 255 at the centre → 0 at the edge (a hard dot) |
-| 2 | core colour 255,252,100 (yellow-white) | 255,252,100 | core RGBA (multiplies the white sprite) |
-| 3 | 0.2 | 0.2 | core scale relative to the whole |
-| 4 | 1.2 | 1.0 | rotation rate (spins the flare layer) |
-| 5 | `TorpedoGlow.tga` | same | **glow** sprite: 32 × 32 white, alpha 160 centre → 0 edge (soft halo) |
-| 6 | glow colour 255,65,0 (orange) | 61,98,239 (blue) | glow RGBA — *this* is the species colour |
-| 7 | 3.0 | 4.0 | glow pulse rate |
-| 8 | 0.3 | 0.3 | minimum glow size |
-| 9 | 0.6 | 0.6 | maximum glow growth |
-| 10 | `TorpedoFlares.tga` | same | **flares**: 32 × 64 white streak sprite (alpha 255 centre line → ~2 edges) |
-| 11 | flare colour = glow colour | = glow colour | flare RGBA |
-| 12 | 8 | 12 | maximum number of flares spawned from the core |
-| 13 | 0.7 | 0.5 | flare length |
-| 14 | 0.4 | 0.4 | flare lifespan before respawn |
+| # | Photon | Quantum | argument | evidence |
+|---|---|---|---|---|
+| 1 | `data/Textures/Tactical/TorpedoCore.tga` | same | **core** sprite: 32 × 32 white, alpha 255 at the centre → 0 at the edge (a hard dot) | file |
+| 2 | core colour 255,252,100 (yellow-white) | 222,222,253 | core RGBA | the stock frames show a yellow-white dot inside an orange halo (`stock_04.png`) |
+| 3 | 0.2 | 0.2 | **core scale** | 0.2 → 0.8: core radius 21 px → 90 px in every frame (×4.2); `GetRadius` 0.770 → 0.906 (`core_00.png`) |
+| 4 | 1.2 | 1.0 | **flare rotation rate** | with flares made permanent (arg 14 = 100): at 1.2 the dominant flare directions move every frame; at 0 the same three direction bins hold for all 8 frames (histogram change ≤ 0.08 vs 0.3–0.8) (`life100_07.png`, `life100rot0_04.png`) |
+| 5 | `TorpedoGlow.tga` | same | **glow** sprite: 32 × 32 white, alpha 160 centre → 0 edge (soft halo) | file |
+| 6 | glow colour 255,65,0 (orange) | 61,98,239 (blue) | glow RGBA — the species colour | stock frames: orange halo |
+| 7 | 3.0 | 4.0 | **glow pulse rate** | stock halo radius swings 59 ↔ 107 px between frames 0.25 s apart; at 0.5 it holds 100–115 px across frames (`pulse_01.png`) |
+| 8 | 0.3 | 0.3 | **base glow size** | 0.3 → 1.0: halo radius 115–168 px vs 59–107 (`min1_06.png`) |
+| 9 | 0.6 | 0.6 | **glow pulse amplitude** — *not* "growth" that can be zeroed safely | at 0 (with arg 8 at 0.3 or 1.5) the halo is absent in most frames (radius = core edge) and the bounding radius pulses 0.80–1.04 GU; the engine degenerates rather than holding the base size (`growth0_04.png`, `glowbig_01.png`) |
+| 10 | `TorpedoFlares.tga` | same | **flares**: 32 × 64 white streak sprite (alpha 255 centre line → ~2 edges) | file |
+| 11 | flare colour = glow colour | = glow colour | flare RGBA | stock frames: orange streaks |
+| 12 | 8 | 12 | **flare count** | 8 → 0: no streaks in any frame (`flares0_00.png`) |
+| 13 | 0.7 | 0.5 | **flare length** | 0.7 → 2.5: streak reach 291 → 514 px (frame-limited); `GetRadius` 0.770 → 2.557 (`flarelen_01.png`) |
+| 14 | 0.4 | 0.4 | **flare lifespan** (s) | 0.4 → 100: streaks persist and pile up (flare pixels 17 000 vs ≤ 10 000) instead of respawning (`life100_07.png`) |
+
+A torpedo's `GetRadius()` (0.770 GU stock photon, `cam_galaxy_torpcam`) is
+therefore the sprite bound — core scale, flare length and the pulsing glow
+all move it — not a physics size.
 
 Every stock torpedo uses the same three textures; only colours, counts and
 speeds differ:
@@ -949,9 +960,11 @@ around a brighter core), no texture:
 | `FusionBolt` (Ferengi) | 1.00 0.38 0.00 (orange) | 1.00 0.87 0.66 | 2.8 × 0.17 | 46 | 8 | `Klingon Disruptor` |
 | `KessokDisruptor` | 0.17 0.17 1.00 (blue) | 0.64 0.64 1.00 | **11 × 0.6** | 27 | 12 | `Cardassian Torpedo` |
 
-(the length/width reading of arguments 3–4 is the community's; the values
-scale exactly as the on-screen bolts do — the Kessok bolt is the 5× longer,
-3× fatter one.)
+Arguments 3–4 verified on the exe through the bolt's `GetRadius()`
+(row `f`, Bird of Prey `PulseDisruptor` patched one argument at a time,
+`docs/results/vfx/vfx_p*.json`): stock 1.8 × 0.15 → **0.900 = length / 2**;
+length 6.0 → **3.000**; width 0.6 → 0.975 (the width enters the bound too).
+Bolts are not followed by TorpCam (it stays in Chase), so no close-up frames.
 
 ### 14.4 Impacts — what is composited on a hit
 
