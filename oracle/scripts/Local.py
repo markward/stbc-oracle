@@ -22,6 +22,11 @@ import App
 import sys
 import new
 
+# MissionLib.SaveGame pickles every script module's globals; names listed
+# here are skipped (stock convention).  Modules, C handles and the stub
+# list cannot be pickled and would pop the debug console.
+NonSerializedObjects = ("_cfg", "_marks", "_real", "_stub_mod")
+
 _cfg = App.g_kConfigMapping
 _marks = []
 
@@ -56,6 +61,16 @@ def OnDeferredStart(pObject, pEvent):
     _started[0] = 1
     try:
         _mark("deferred_fired", "1")
+        mission = _mission_requested()
+        if mission:
+            # Stock campaign mission through the developers' Test Game path
+            # (mainmenu.RunOverrideMission); Oracle.OracleScene samples it.
+            ep = "Episode" + mission[1]
+            import Oracle.OracleScene
+            Oracle.OracleScene.Wrap("Maelstrom.%s.%s.%s" % (ep, mission, mission))
+            _resolve().RunOverrideMission(ep, mission)
+            _mark("mission_posted", "%s/%s" % (ep, mission))
+            return
         pTopWindow = App.TopWindow_GetTopWindow()
         pOptionsWindow = pTopWindow.FindMainWindow(App.MWT_OPTIONS)
         App.Game_SetDifficulty(1)          # QuickBattleHandler does this first
@@ -67,6 +82,19 @@ def OnDeferredStart(pObject, pEvent):
         _mark("new_game_posted", GAME_MODULE)
     except:
         _mark("deferred_error", _exc())
+
+
+def _mission_requested():
+    """oracle_in.cfg [OracleIn] mission=E3M2 -> "E3M2", else ""."""
+    try:
+        App.g_kConfigMapping.LoadConfigFile("oracle_in.cfg")
+        m = App.g_kConfigMapping.GetStringValue("OracleIn", "mission")
+        if m is None or m == "" or m == "none":
+            return ""
+        return m
+    except:
+        _mark("mission_read_error", _exc())
+        return ""
 
 
 def _schedule_start():

@@ -21,7 +21,7 @@ BASE = dict(attacker="KessokHeavy", target="Galaxy", weapon="phaser", motion="no
             power_wanted=-1.0, shield_face=-1, shield_frac=1.0, shields_off=0,
             settle_s=2.0, fire_at=1.0, duration=12.0, sample_dt=0.03,
             disable_target_weapons=1, rows="ab", torp_type=-1, pulse_power=-1,
-            time_scale=1.0, target_alert="red", tractor_mode="hold", shield_power=-1.0, gen_frac=-1.0, ai=0, ai_level=0.5, ai_log=0, target_motion="none", target_fire=0, warp_stop_gu=50.0, warp_time=5.0, warp_dest="Systems.Vesuvi.Vesuvi5", warp_clear=0.0, sample="attacker", view="bridge", warp_patch="none")
+            time_scale=1.0, target_alert="red", tractor_mode="hold", shield_power=-1.0, gen_frac=-1.0, ai=0, ai_level=0.5, ai_log=0, target_motion="none", target_fire=0, warp_stop_gu=50.0, warp_time=5.0, warp_dest="Systems.Vesuvi.Vesuvi5", warp_clear=0.0, sample="attacker", view="bridge", warp_patch="none", mission="none")
 
 MATRIX: dict[str, dict] = {
     # --- phasers: intensity table -------------------------------------------
@@ -130,6 +130,20 @@ MATRIX: dict[str, dict] = {
     "cam_galaxy_chase_impulse": dict(weapon="none", target_motion="impulse", sample="target", rows="cd", range_gu=300.0, duration=25.0, fire_at=10.0, view="tactical"),
     "cam_galaxy_chase_yaw":    dict(weapon="none", target_motion="yaw", sample="target", rows="cd", range_gu=300.0, duration=25.0, fire_at=10.0, view="tactical"),
     "cam_galaxy_cinematic":    dict(weapon="none", target_motion="cinematic", sample="target", rows="cd", range_gu=300.0, duration=20.0, fire_at=10.0),
+    # Scene audit of stock campaign missions (random.seed(20260921).sample of
+    # the 26 shipped missions, 10, plus E1M1): every ship in the player's set, every 5 s
+    # for 90 s of untouched play (rows m/s/h; Oracle/OracleScene.py).
+    "scene_E1M1": dict(mission="E1M1", duration=90.0, sample_dt=5.0, rows="m"),   # the campaign start, added to the draw
+    "scene_E1M2": dict(mission="E1M2", duration=90.0, sample_dt=5.0, rows="m"),
+    "scene_E2M0": dict(mission="E2M0", duration=90.0, sample_dt=5.0, rows="m"),
+    "scene_E2M6": dict(mission="E2M6", duration=90.0, sample_dt=5.0, rows="m"),
+    "scene_E3M1": dict(mission="E3M1", duration=90.0, sample_dt=5.0, rows="m"),
+    "scene_E3M2": dict(mission="E3M2", duration=90.0, sample_dt=5.0, rows="m"),
+    "scene_E4M4": dict(mission="E4M4", duration=90.0, sample_dt=5.0, rows="m"),
+    "scene_E4M5": dict(mission="E4M5", duration=90.0, sample_dt=5.0, rows="m"),
+    "scene_E4M6": dict(mission="E4M6", duration=90.0, sample_dt=5.0, rows="m"),
+    "scene_E7M6": dict(mission="E7M6", duration=90.0, sample_dt=5.0, rows="m"),
+    "scene_E8M1": dict(mission="E8M1", duration=90.0, sample_dt=5.0, rows="m"),
     "warpset_kessok_recmd":  dict(weapon="none", motion="warpset_recmd", rows="c", range_gu=300.0, duration=30.0),
     "motion_kessok_impulse020_warpon": dict(weapon="none", motion="impulse020_warpon", rows="c", range_gu=300.0, duration=20.0),
     "tractor_galaxy_galaxy_pull": dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="pull", rows="abc", range_gu=15.0, duration=30.0),
@@ -157,7 +171,7 @@ def main(argv=None) -> int:
         print(f"=== {name}", flush=True)
         result = run_oracle.run(a.oracle_dir, params, timeout, None)
         result["name"] = name
-        ok = result["done"] and (result["rows"] or result["motion_rows"] or result.get("camera_rows"))
+        ok = result["done"] and (result["rows"] or result["motion_rows"] or result.get("camera_rows") or result.get("scene_meta_rows"))
         print(run_oracle.summarise(result), flush=True)
         if ok:
             out.write_text(json.dumps(result, indent=1))

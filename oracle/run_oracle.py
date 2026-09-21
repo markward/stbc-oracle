@@ -168,10 +168,12 @@ def parse_row(line: str) -> dict:
             d[k] = _floats(v)
         elif k == "fi":
             d[k] = [int(x) for x in v.split(",") if x != ""]
-        elif k in ("tgt", "fire", "set", "ws", "rs", "cs", "mode", "fr", "cam"):
+        elif k in ("tgt", "fire", "set", "ws", "rs", "cs", "mode", "fr", "cam", "name", "scr", "hull", "ai", "player", "err"):
             d[k] = v
-        elif k in ("isw", "bv", "tv", "cut", "cin", "pc"):
+        elif k in ("isw", "bv", "tv", "cut", "cin", "pc", "n", "ships", "al", "pl", "hid", "clk", "dy"):
             d[k] = int(v)
+        elif k in ("shm",):
+            d[k] = _floats(v)
     return d
 
 
@@ -186,7 +188,7 @@ def parse_output(oracle_dir: Path) -> dict:
         sec = parse_cfg_section(path, "OracleOut")
         keys = sorted(k for k in sec if k.startswith("r") and k[1:].isdigit())
         raw_rows.extend(sec[k] for k in keys if sec[k] != "")
-    rows = {"a": [], "b": [], "c": [], "d": [], "e": []}
+    rows = {"a": [], "b": [], "c": [], "d": [], "e": [], "s": [], "h": [], "m": []}
     for line in raw_rows:
         d = parse_row(line)
         rows.setdefault(d["kind"], []).append(d)
@@ -194,6 +196,7 @@ def parse_output(oracle_dir: Path) -> dict:
     boot = parse_cfg_section(oracle_dir / BOOT_CFG, "OracleBoot")
     hook = parse_cfg_section(oracle_dir / BOOT_CFG, "OracleHook")
     return {"meta": meta, "rows": rows["a"], "sub_rows": rows["b"], "motion_rows": rows["c"], "camera_rows": rows["d"], "active_camera_rows": rows["e"],
+            "scene_rows": rows["s"], "scene_health_rows": rows["h"], "scene_meta_rows": rows["m"],
             "subsystems": [{"name": x[0], "max": float(x[1]) if len(x) > 1 and x[1] != "err" else None,
                             "radius": float(x[2]) if len(x) > 2 else None,
                             "pos": _floats(x[3]) if len(x) > 3 else None} for x in subs],
@@ -238,6 +241,11 @@ def summarise(result: dict) -> str:
                 segs.append((key, r["t"]))
         desc = "; ".join(f"{t:.2f}s rs={k[0]} cs={k[1]} mode={k[2]} bv={k[3]} tv={k[4]} cut={k[5]} cin={k[6]}" for k, t in segs[:12])
         lines.append(f"camera: {len(crows)} samples, {len(segs)} states: {desc}")
+    mrows2 = result.get("scene_meta_rows") or []
+    if mrows2:
+        first, last = mrows2[0], mrows2[-1]
+        lines.append(f"scene: {len(mrows2)} snapshots, t={first['t']:.1f}..{last['t']:.1f}s; first set={first.get('set')} ships={first.get('ships')} player={first.get('player')}; "
+                     f"last set={last.get('set')} ships={last.get('ships')} player={last.get('player')} cut={last.get('cut')}")
     erows = result.get("active_camera_rows") or []
     if erows:
         segs = []
@@ -348,6 +356,7 @@ def main(argv=None) -> int:
     ap.add_argument("--ai-log", action="store_true", help="(non-functional: ArtificialIntelligence_LogAITree stalls the game even when armed at boot)")
     ap.add_argument("--target-motion", default="none", choices=["none", "impulse", "yaw", "warp", "warpset", "cinematic", "settarget"])
     ap.add_argument("--sample", default="attacker", choices=["attacker", "target"], help="which ship row c follows")
+    ap.add_argument("--mission", default="none", help="stock campaign mission to load instead of Quick Battle (E1M1 .. E8M2); scene rows s/h/m every sample_dt for duration")
     ap.add_argument("--warp-patch", default="none", help="comma list of WarpSequence player-branch camera steps to no-op")
     ap.add_argument("--view", default="bridge", choices=["bridge", "tactical"], help="the player's view once the sim runs")
     ap.add_argument("--target-fire", action="store_true", help="player ship shoots back at act time")
@@ -389,7 +398,7 @@ def main(argv=None) -> int:
         "time_scale": a.time_scale, "target_alert": a.target_alert, "tractor_mode": a.tractor_mode,
         "shield_power": a.shield_power, "gen_frac": a.gen_frac,
         "ai": 1 if a.ai else 0, "ai_level": a.ai_level, "ai_log": 1 if a.ai_log else 0,
-        "target_motion": a.target_motion, "target_fire": 1 if a.target_fire else 0, "sample": a.sample, "view": a.view, "warp_patch": a.warp_patch,
+        "target_motion": a.target_motion, "target_fire": 1 if a.target_fire else 0, "sample": a.sample, "view": a.view, "warp_patch": a.warp_patch, "mission": a.mission,
         "warp_stop_gu": a.warp_stop_gu, "warp_time": a.warp_time, "warp_dest": a.warp_dest, "warp_clear": a.warp_clear,
     }
     result = run(a.oracle_dir, params, a.timeout, a.shot, a.shot_at)

@@ -27,7 +27,7 @@ python oracle/analyze.py          # report per docs/oracle/results/*.json
 | `scripts/Oracle/OracleLog.py` | `SaveConfigFile`-backed markers, metadata and chunked rows |
 | `run_oracle.py` | Python 3 driver: deploy scripts, write inputs, launch, focus, skip movies, collect, parse |
 | `capture.py` | `PrintWindow(PW_RENDERFULLCONTENT)` screenshots — BitBlt shows the 3D view black |
-| `study.py` / `analyze.py` | the study matrix and its reduction |
+| `study.py` / `analyze.py` / `scene_report.py` | the study matrix and its reductions (`scene_report.py` writes `docs/mission-scenes.md`) |
 
 The oracle directory (`--oracle-dir`, default
 `~/Documents/Star Trek Bridge Commander/bc_oracle`) is a clean BC install plus
@@ -76,6 +76,13 @@ run. Nothing in the stock script tree is modified.
    Quick Battle intro cutscene owns the view until ~7.3 s — camera scenarios
    act at `fire_at` 10. `oracle_boot.cfg`'s `zz_pulse` heartbeat (rewritten
    every 16 samples) is how a crash gets timed.
+9. **Stock missions load through the developers' own override** (`mission=E3M2`
+   in `oracle_in.cfg` → `mainmenu.RunOverrideMission`), with the mission's
+   `Initialize` wrapped only to arm `Oracle/OracleScene.py`. Missions call
+   `MissionLib.SaveGame` in `Initialize`, which pickles every script module's
+   globals: any oracle global holding a module or a C handle must be listed in
+   that module's `NonSerializedObjects` or the debug console pops and the game
+   freezes (E1M1 does not save, so it worked first; nothing else did).
 
 ## Inputs (`oracle_in.cfg [OracleIn]`, all set by the driver)
 

@@ -523,6 +523,9 @@ cadences). File = the capture whose raw rows are the reference.
 | V2 | Chase (external view, no target): camera 17.38 GU astern and 1.74 GU above the ship origin, aimed at the origin; at steady speed it trails a further 0.26–0.29 s × speed (19.18 at 6.30 GU/s); in a 0.28 rad/s turn it swings 5.45 GU to the outside | ±0.1 GU at rest, ±5 % moving | `cam_galaxy_tactical`, `cam_galaxy_chase_impulse`, `cam_galaxy_chase_yaw` |
 | V3 | Target mode (player has a target): same station as Chase, 0.35 GU higher (17.34 astern, 2.09 up), reached in 1 s | ±0.1 GU | `cam_galaxy_target` |
 | V4 | cinematic mode on a parked ship: DropAndWatch at exactly 15.15 GU from the ship, aimed at it, drifting around it | ±0.1 GU | `cam_galaxy_cinematic` |
+| N1 | a freshly loaded campaign mission has the player ship parked at the scripted placement (speed 0, green alert, full hull/shields, no target) and it stays parked for 90 s without input | exact | `scene_*` (11 missions) |
+| N2 | every non-player object spawns at red alert (E1M1's dock scene: green) with full hull and shields; ambient traffic runs `AvoidObstacles` at 4.0 GU/s; nothing is hidden, cloaked or dying at t = 0 | exact / ±2 % | `scene_*` |
+| N3 | per-mission cast, placements and 90 s autonomous evolution as tabulated in §13 / `docs/mission-scenes.md` (E2M6 fight, E3M2 Warbird warps out by 30 s, E4M5 Enterprise arrives at 46 s) | ±5 GU, ±5 s | `scene_E2M6`, `scene_E3M2`, `scene_E4M5` |
 | V5 | player warp camera choreography: pre-warp cutscene camera 30.8 GU astern within 0.2 s of `Play()`, stays put while the ship streaks away; bridge viewscreen from 2.0 s after the ship enters the warp set until 0.6 s before it leaves; destination cutscene camera 53 GU ahead of the placement, aimed at the arriving ship, live 0.6 s before the ship appears; external Chase view and control back 2.0 s after arrival | ±0.2 s, ±1 GU | `warpcam_galaxy` |
 
 ---
@@ -533,6 +536,8 @@ cadences). File = the capture whose raw rows are the reference.
   GU/s in every mode).
 * Collision damage split per hull pairing (BoP → Kessok: 1417 to the
   Kessok, BoP survived at 5.2 GU/s — no clean constant).
+* Mission scenes: 11 of 26 missions sampled (§13); the rest, and what the
+  scenes do beyond 90 s / after the player acts, are not.
 * Camera: the bridge (viewscreen) cameras and the remaining `Camera.py`
   modes (Reverse, Map, ZoomTarget, Placement, Locked, FirstPerson) are not
   yet sampled; §12 covers Chase, Target, cinematic DropAndWatch and the warp.
@@ -712,3 +717,63 @@ not a cutscene.
 * The Galaxy's streak runs along its heading (−Y at the origin) — straight
   through the attacker at (0, −300, 0). `warp_clear` moves the *other*
   ship 200 GU off the line (W3).
+
+
+---
+
+## 13. Mission scenes — what a stock mission puts in the player's set
+
+Eleven campaign missions loaded through the game's own developer path
+(`MainMenu.mainmenu.RunOverrideMission`: `Options/EpisodeOverride` +
+`MissionOverride`, then `ET_NEW_GAME "Maelstrom.Maelstrom"`), the mission
+module's `Initialize` wrapped only to arm a sampler, **no input at all**,
+every ship in the player's set dumped every 5 s for 90 s
+(`scene_<mission>.json`, `Oracle/OracleScene.py`). The ten were drawn with
+`random.seed(20260921).sample(...)` from the 26 shipped missions; E1M1 (the
+campaign start) was added. The full per-ship tables — position, forward,
+speed, hull, six shield faces, alert, AI, target, flags at t = 0, +30 s and
++90 s — are in **`docs/mission-scenes.md`** (`oracle/scene_report.py`
+regenerates it). What a remake has to reproduce, mission by mission:
+
+| mission | player (script, position) | set | other objects at t = 0 (script, AI) | what happens in 90 s of nobody touching anything |
+|---|---|---|---|---|
+| E1M1 | Galaxy at (1, 1, 1) facing +Y | `DryDock` | Dry_Dock ×3, Station (SpaceFacility), Nightingale (Nebula, docked at Dry_Dock2's position), Shuttle1–3 (Shuttle; 1–2 `AvoidObstacles`) | cutscene from t = 10 s onward; Shuttle1/2 fly at 4.0 GU/s (185 / 347 GU in 90 s); nothing else moves; no damage |
+| E1M2 | Galaxy at (146, −90, 0) | `Vesuvi6` | Facility (FedOutpost), Debris1–6 (Asteroid variants) | cutscene t 0–40 s; static scene |
+| E2M0 | Galaxy at (−825, −769, 238) | `Tevron2` | Sovereign (`PriorityList`), RanKuf, Trayor (RanKuf, `AvoidObstacles`) | no cutscene; Trayor drifts 54 GU; static otherwise |
+| E2M6 | Galaxy at (309, −426, 98) | `Biranu2` | Biranu_Station (`PriorityList`), Galor_1–4, RanKuf, Trayor | cutscene t 6–60 s; **a fight plays out by itself**: Galor_1/2 front shields to 0.58/0.57, Galor_4 rear/top 0.93/0.96, RanKuf and Trayor scratched (Trayor hull 6891/7000), five ships moving at t = 90 |
+| E3M1 | Sovereign at (−23, 104, 16) | `Starbase12` | Starbase_12 (FedStarbase), USS_Dauntless (Galaxy), USS_Excalibur (Ambassador), USS_Geronimo, USS_Prometheus (Nebula, `AvoidObstacles`) | cutscene the whole 90 s; Prometheus travels 181 GU |
+| E3M2 | Sovereign at (146, −90, 0) | `Vesuvi6` | Facility (FedOutpost), Warbird (`AvoidObstacles`, 0.23 GU/s) | cutscene t 6–20 s; the Warbird takes `Warp` AI and is **gone from the set by t = 30 s** |
+| E4M4 | Sovereign at (−33, −227, −1) | `Belaruz4` | Asteroid_1–7, Mavjop (BirdOfPrey, `AvoidObstacles`) | cutscene the whole 90 s; static |
+| E4M5 | Sovereign at (−30, −156, 1) | `Starbase12` | Starbase_12, USS_Prometheus (`AvoidObstacles`) | no cutscene; Prometheus travels 296 GU; **USS_Enterprise appears at t = 46 s** (warp-in) and is moving at t = 90 |
+| E4M6 | Sovereign at (−30, −156, 1) | `Starbase12` | Starbase_12 | cutscene t 0–80 s; static |
+| E7M6 | Sovereign at (−30, −605, 1) | `Starbase12` | Starbase_12, USS_Geronimo, HoH'egh (Vorcha), Chilvas (Warbird) — all `AvoidObstacles` | no cutscene; the three escorts cruise 54–123 GU |
+| E8M1 | Sovereign at (0, 151, 1) | `Starbase12` | Starbase_12, USS_Geronimo, USS_San_Francisco (Galaxy) — `AvoidObstacles` | no cutscene; escorts cruise 64–73 GU |
+
+Invariants across all eleven (assertions N1–N3 in §9):
+
+* The **player ship is parked**: speed 0.00 at every snapshot, never moves,
+  green alert, full hull and shields, no target, and it carries the
+  `GoForward` AI (the player's helm AI slot) in every mission.
+* In every mission but E1M1, **every non-player ship, station and asteroid
+  is at red alert (2)** from the first snapshot and the player is the only
+  object at green (0). E1M1's dock scene is the exception: docks, station,
+  Nightingale and Shuttle1/2 are at green (the `GreenAlert` AI), only
+  Shuttle3 (no AI) is red.
+* Ambient traffic is the `AvoidObstacles` AI at **4.0 GU/s** (shuttles,
+  escorts, the Prometheus); scripted actors use `PriorityList` /
+  `MainSequence` / `Warp`. No ship in these first 90 s takes damage unless
+  the mission scripts a fight (E2M6), and nothing is ever hidden, cloaked or
+  dying.
+* All mission ships spawn with **full hull and full shields** (values are
+  the hardpoint maxima — Galaxy 15000 / 8000-4000, Sovereign 12000,
+  FedStarbase and BiranuStation as listed in `mission-scenes.md`).
+* Missions that begin docked at Starbase 12 place the Sovereign at
+  (−30, −156, 1) (E4M5, E4M6) or nearby; E1M2 and E3M2 share the Vesuvi6
+  placement (146, −90, 0).
+
+Harness notes: the mission path needs `NonSerializedObjects` in every
+oracle module (`MissionLib.SaveGame` in a mission's `Initialize` pickles all
+script globals — a module alias or a C handle in a global pops the debug
+console and freezes the game; E1M1 does not save, the rest do); the
+freeze-detector budget is the mission `duration` + 23 s; and the driver's
+`PrintWindow` screenshot blocks on a frozen window — use a desktop capture.

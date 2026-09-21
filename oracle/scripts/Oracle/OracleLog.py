@@ -11,6 +11,8 @@
 import App
 import sys
 
+NonSerializedObjects = ("_cfg", "_marks", "_rows", "_meta")   # see Local.py
+
 _cfg = App.g_kConfigMapping
 _marks = []
 _rows = []

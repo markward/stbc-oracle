@@ -33,6 +33,9 @@ then the bible's §9 (harness assertions) and §10 (open items).
 - `ArtificialIntelligence_LogAITree` is unusable (kills or stalls the game);
   don't re-try it without a new idea.
 - Every config value written from the game must stay under 180 characters.
+- Missions pickle every script module's globals on `SaveGame`: a global that
+  holds a module or C handle must be listed in that module's
+  `NonSerializedObjects`, or the game freezes on load.
 
 ## Layout
 
@@ -40,10 +43,10 @@ then the bible's §9 (harness assertions) and §10 (open items).
 |---|---|
 | `oracle/run_oracle.py` | Python 3 driver: deploy scripts, write `oracle_in.cfg`, launch, focus-click, ESC through movies, collect `oracle_out*.cfg`, parse |
 | `oracle/study.py` | the study matrix (`MATRIX` dict); `--only <substring>`; skips existing results |
-| `oracle/analyze.py`, `oracle/ai_report.py` | reduce captures to the bible's numbers |
+| `oracle/analyze.py`, `oracle/ai_report.py`, `oracle/scene_report.py` | reduce captures to the bible's numbers (`scene_report.py` → `docs/mission-scenes.md`) |
 | `oracle/capture.py` | `PrintWindow(PW_RENDERFULLCONTENT)` screenshots; BitBlt shows the 3D view black |
 | `oracle/scripts/Local.py` | startup hook (stub `MainMenu.mainmenu`, deferred `ET_NEW_GAME`) |
-| `oracle/scripts/Oracle/*.py` | Game/Episode/Mission/Log modules deployed into the game |
+| `oracle/scripts/Oracle/*.py` | Game/Episode/Mission/Log modules deployed into the game; `OracleScene.py` samples a stock campaign mission (`mission=E3M2`, started via `mainmenu.RunOverrideMission`) |
 | `docs/bc-behaviour-bible.md` | the measured contract |
 | `docs/results/*.json` | raw captures, one per scenario; never hand-edit |
 
