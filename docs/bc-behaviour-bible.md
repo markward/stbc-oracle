@@ -394,10 +394,12 @@ settled at 0.370 (half) and a re-commanded `SetImpulse(1.0)` at only 1.278
 (`warpset_kessok_recmd`), with `GetImpulse()` = 1.0 and impulse power = 1.0
 throughout. The engine and impulse laws were never involved. Moving the
 target 200 GU aside (`warp_clear=200`, `warpset_kessok_rest_clear`) gives
-zero angular velocity and the 0.740 above. A remake therefore must keep
-collision on during the outbound streak (an AI that warps out with its
-impulse engines disabled turns collisions off explicitly, `AI/PlainAI/Warp.py`),
-and a harness must never put anything on the warp line. Two harness notes: the destination must be given as the **system
+zero angular velocity and the 0.740 above. **Remake requirement (W3): the
+warping ship keeps colliding during the outbound streak** — do not turn
+collision off for the warp. The one stock exception is `AI/PlainAI/Warp.py`,
+which calls `SetCollisionsOn(0)` only when the warping ship's impulse
+engines are disabled (`bWarpBlindlyIfNoImpulse`). A harness must never put
+anything on the warp line. Two harness notes: the destination must be given as the **system
 module name**, not the set name (the script strips to the set after the
 last dot and loads the system itself); and a warp with no destination
 (`WarpSequence_Create(ship, None, t)`, the AI "bail out" form) removes the
@@ -504,7 +506,7 @@ cadences). File = the capture whose raw rows are the reference.
 | S5 | regen rate identical at red/yellow/green alert | ±5 % | `regen_*_face50` |
 | W1 | in-system warp: step to 75.0 GU/s, duration = distance/75, exit at MaxSpeed regardless of entry speed, drop-out at the requested stop distance | exact / ±10 GU | `warp_*` |
 | W2 | set-to-set warp: 1.0 s entry delay, ~2.25 s at 700 GU/s in the origin set, `warp_time` in the warp set, ~1.9 s scripted dewarp to the placement, arrive at rest and unrotated then creep to 0.2 × MaxSpeed (`SetImpulse(0.2)`) | ±0.2 s per phase; speed ±2 % | `warpset_kessok_rest_clear`, `motion_kessok_impulse020` |
-| W3 | the outbound warp streak collides: a ship on the streak line is hit at 700 GU/s and the warping ship arrives spinning at ~10 rad/s, undamped | qualitative | `warpset_kessok_rest`, `warpset_kessok_recmd` |
+| W3 | **collision stays ON during the outbound warp streak**: a ship on the streak line is hit at 700 GU/s and the warping ship arrives spinning at ~10 rad/s, undamped. The only stock exception is `AI/PlainAI/Warp.py` switching collisions off when the warping ship's impulse engines are disabled | qualitative | `warpset_kessok_rest`, `warpset_kessok_recmd` |
 | C1 | collision is elastic with hardpoint masses (post-impact speeds) | ±3 % | `ram_*` |
 | C2 | rammed-ship damage = 8.2 × 2μv; shields untouched | ±10 % | `ram_*` |
 | P4 | bolt = script damage × emitter DamageScale; power setting changes shot cost 0.5/1/2, not damage | exact | `pulse_warbird_front_40_{meta,low,high}` |
