@@ -470,6 +470,14 @@ def _act_weapon():
                  "pull": App.TractorBeamSystem.TBS_PULL, "push": App.TractorBeamSystem.TBS_PUSH}
         ps.SetMode(modes.get(P["tractor_mode"], App.TractorBeamSystem.TBS_HOLD))
     g_pAttacker.SetTarget(g_pTarget.GetName())   # takes a NAME, not an object
+    if P["weapon"] == "tractor":
+        # engine engagement events -> markers + the tr= flag in row c
+        try:
+            pMission = MissionLib.GetMission()
+            App.g_kEventManager.AddBroadcastPythonFuncHandler(App.ET_TRACTOR_BEAM_STARTED_HITTING, pMission, __name__ + ".OnTractorHit")
+            App.g_kEventManager.AddBroadcastPythonFuncHandler(App.ET_TRACTOR_BEAM_STOPPED_HITTING, pMission, __name__ + ".OnTractorStop")
+        except:
+            _log.mark("tractor_events_error", _log.exc())
     ps.StartFiring(g_pTarget)
 
 def _digits(s):
@@ -478,6 +486,43 @@ def _digits(s):
         if ch in "0123456789":
             out = out + ch
     return out
+
+g_tr_hit = 0
+
+def _tractor_event(pEvent, on):
+    global g_tr_hit
+    g_tr_hit = on
+    try:
+        src = App.TractorBeamProjector_Cast(pEvent.GetSource())
+        dst = App.ObjectClass_Cast(pEvent.GetDestination())
+        _log.mark("tractor_" + (on and "hit" or "stop"), "t=%.3f proj=%s ship=%s target=%s" % (
+            App.g_kUtopiaModule.GetGameTime() - g_t0,
+            string.replace(src.GetName(), " ", "_"), string.replace(src.GetParentShip().GetName(), " ", "_"),
+            string.replace(dst.GetName(), " ", "_")))
+    except:
+        _log.mark("tractor_" + (on and "hit" or "stop"), "t=%.3f (%s)" % (App.g_kUtopiaModule.GetGameTime() - g_t0, _log.exc()))
+
+def OnTractorHit(pObject, pEvent):
+    _tractor_event(pEvent, 1)
+    pObject.CallNextHandler(pEvent)
+
+def OnTractorStop(pObject, pEvent):
+    _tractor_event(pEvent, 0)
+    pObject.CallNextHandler(pEvent)
+
+def _tractor_state():
+    """tr=<system firing>,<trying>,<charge of the first projector>,<engine hitting flag>,<range>"""
+    try:
+        ts = g_pAttacker.GetTractorBeamSystem()
+        ch = -1.0
+        for i in range(ts.GetNumChildSubsystems()):
+            b = App.TractorBeamProjector_Cast(ts.GetChildSubsystem(i))
+            if b is not None:
+                ch = b.GetChargeLevel()
+                break
+        return " tr=%d,%d,%.2f,%d,%.1f" % (int(ts.IsFiring()), int(ts.IsTryingToFire()), ch, g_tr_hit, _range())
+    except:
+        return " tr=err"
 
 def _act_motion():
     m = P["motion"]
@@ -1221,6 +1266,8 @@ def OnSample(pObject, pEvent):
                     extra = " rng=%.3f tgt=%s fire=%s" % (_range(), tn, fs or "-")
                 except:
                     extra = " rng=%.3f" % _range()
+            if P["weapon"] == "tractor" and g_acted:
+                extra = extra + _tractor_state()
             if not P["ai"]:
                 # impulse command fraction and the engine's actual power fraction
                 try:

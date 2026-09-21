@@ -441,16 +441,47 @@ runs) and a rammer left under power hits again every ~3 s (Kessok: 5870,
 
 ### 7.5 Tractor beam
 
-With a Galaxy's tractor system engaged on a parked target
-(`tractor_galaxy_*`, Kessok Heavy at 20 GU; `tractor_galaxy_galaxy_*`,
-Galaxy at 15 GU, 30 s) the beam fires (one emitter) and the target creeps
-toward the projector at **0.007 GU/s regardless of target mass (500 or
-120) and of mode** (hold / tow / pull / push all identical), stopping after
-~5 GU of travel (~2.7 GU in one hold run); the projector never moves. The
-tractor as scripted here is nearly inert — whatever makes it useful in play
-(projector motion, relative velocity) is not exercised by a parked pair.
+Galaxy projector on a Galaxy or Kessok target; the engine's
+`ET_TRACTOR_BEAM_STARTED/STOPPED_HITTING` events and the system's
+`IsFiring` sampled every 31 ms (`tr=` in row `c`, `tractor_*` captures).
 
----
+**When it engages** (`tractor_engage_*`): the beam hits **within the first
+sample after `StartFiring`** and stays locked, at 20, 60, 100 and 115 GU;
+never at 125 or 150 — the gate is the projector's `MaxDamageDistance`
+(118 for every Galaxy projector). Target shields up or down make no
+difference (`tractor_engage_r20_noshields`). The projector's charge never
+drops from 5.00 while holding (no discharge). Arcs are the projectors'
+hardpoint arcs, union over the four projectors: yawing the ship with the
+beam on, the forward pair holds to **±60° off the nose** (drops at 61°,
+re-acquires at 58° — `ArcWidthAngles ±1.047`), the aft pair takes over from
+**~127–137° to dead astern**; pitching, the forward pair holds to **67°
+nose-down / 53° nose-up** with a projector hand-off flicker at 9–13°, the
+aft pair from 136°. So a target inside 118 GU is held from anywhere except
+two side cones between ~60° and ~130° off the nose.
+
+**What it does to a parked target** (`tractor_galaxy_galaxy_{hold,pull,push,tow}`,
+`tractor_galaxy_hold`, `tractor_pull_power125`): the target's *position*
+moves toward the projector at **0.17–0.23 GU/s** — velocity reads ≈ 0
+(0.007–0.013), it is a positional move — identical in every mode
+(**push pulls too**), for a 120- or 500-mass target, at 100 % or 125 %
+tractor power, from 20 or 100 GU, and it **stops at a fixed range**: pull /
+push / tow from 15 GU stop at **10.0 GU**, hold from 15 GU at **12.3 GU**;
+the projector never moves. Yawing the projector with TOW on
+(`tractor_tow_yawing_projector`) drags the target only 3.7 GU in 30 s
+(0.12 GU/s) — no rigid tow; the AI's towing through warp is scripted
+(`AI/PlainAI/Warp.py` `TowIncrement`), not this.
+
+**What it does to a moving target** (`tractor_{hold,pull,none}_running_target`:
+attacker astern at 15 GU, target at full impulse away): while the beam is
+engaged the Galaxy's speed is capped at **5.883 GU/s = 6.300 − 0.417**
+and it accelerates slower (2.19 vs 3.00 at t = 3 s, 4.36 vs 5.64 at 5 s);
+the moment it passes ~118 GU (t ≈ 21 s) the beam drops and it reaches
+6.300. HOLD and PULL are identical. A constant 0.417 GU/s² on the Galaxy's
+hardpoint mass 120 is a force of **50 = the forward tractor's `MaxDamage`**
+(the aft projectors are 80) — the one reading that fits: `MaxDamage` is the
+tractor's force, applied along the beam, and under the 1 s velocity law
+(§7.1) it costs a ship `MaxDamage / mass` of speed. The parked-target
+creep and its stop range are a separate positional mechanism.
 
 ## 8. Things measured that were *not* as documented elsewhere
 
@@ -514,6 +545,9 @@ cadences). File = the capture whose raw rows are the reference.
 | W1 | in-system warp: step to 75.0 GU/s, duration = distance/75, exit at MaxSpeed regardless of entry speed, drop-out at the requested stop distance | exact / ±10 GU | `warp_*` |
 | W2 | set-to-set warp: 1.0 s entry delay, ~2.25 s at 700 GU/s in the origin set, `warp_time` in the warp set, ~1.9 s scripted dewarp to the placement, arrive at rest and unrotated then creep to 0.2 × MaxSpeed (`SetImpulse(0.2)`) | ±0.2 s per phase; speed ±2 % | `warpset_kessok_rest_clear`, `motion_kessok_impulse020` |
 | W3 | **collision stays ON during the outbound warp streak**: a ship on the streak line is hit at 700 GU/s and the warping ship arrives spinning at ~10 rad/s, undamped. The only stock exception is `AI/PlainAI/Warp.py` switching collisions off when the warping ship's impulse engines are disabled | qualitative | `warpset_kessok_rest`, `warpset_kessok_recmd` |
+| R1 | tractor engages within one sample inside the projector's `MaxDamageDistance` (118: hits at 115, not at 125), shields irrelevant, no charge drain; arcs = the projectors' hardpoint arcs (forward ±60° yaw, −67°/+53° pitch; aft from ~130°) | ±3°, ±5 GU | `tractor_engage_*` |
+| R2 | parked target is moved toward the projector at 0.17–0.23 GU/s (velocity ≈ 0) in every mode incl. push, mass- and power-independent, stopping at 10.0 GU (pull/push/tow) or 12.3 GU (hold) from a 15 GU start; projector never moves | ±10 % | `tractor_galaxy_galaxy_*`, `tractor_pull_power125` |
+| R3 | a moving target under HOLD/PULL is slowed by a constant 0.417 GU/s² (Galaxy: 6.300 → 5.883 GU/s cap) until it leaves range = force `MaxDamage` 50 / mass 120 | ±5 % | `tractor_hold_running_target`, `tractor_none_running_target` |
 | C1 | collision is elastic with hardpoint masses (post-impact speeds) | ±3 % | `ram_*` |
 | C2 | rammed-ship damage = 8.2 × 2μv; shields untouched | ±10 % | `ram_*` |
 | P4 | bolt = script damage × emitter DamageScale; power setting changes shot cost 0.5/1/2, not damage | exact | `pulse_warbird_front_40_{meta,low,high}` |
@@ -538,8 +572,8 @@ cadences). File = the capture whose raw rows are the reference.
 
 ## 10. Not yet measured / open
 
-* Tractor beam: what produces its in-game pull (a parked pair shows 0.007
-  GU/s in every mode).
+* Tractor: whether the force reading `MaxDamage / mass` holds for another
+  mass (a running Kessok) and what sets the parked-target stop range.
 * Collision damage split per hull pairing (BoP → Kessok: 1417 to the
   Kessok, BoP survived at 5.2 GU/s — no clean constant).
 * Mission scenes: 11 of 26 missions sampled (§13); the rest, and what the

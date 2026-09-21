@@ -157,6 +157,22 @@ MATRIX: dict[str, dict] = {
     "scene_E8M1": dict(mission="E8M1", duration=90.0, sample_dt=5.0, rows="m"),
     "warpset_kessok_recmd":  dict(weapon="none", motion="warpset_recmd", rows="c", range_gu=300.0, duration=30.0),
     "motion_kessok_impulse020_warpon": dict(weapon="none", motion="impulse020_warpon", rows="c", range_gu=300.0, duration=20.0),
+    # Tractor with something to act on: a target running away (attacker astern), a yawing projector, more power.
+    "tractor_hold_running_target": dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="hold", rows="c", sample="target", range_gu=15.0, angle_deg=180.0, target_motion="impulse", duration=30.0),
+    "tractor_pull_running_target": dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="pull", rows="c", sample="target", range_gu=15.0, angle_deg=180.0, target_motion="impulse", duration=30.0),
+    "tractor_none_running_target": dict(attacker="Galaxy", target="Galaxy", weapon="none", rows="c", sample="target", range_gu=15.0, angle_deg=180.0, target_motion="impulse", duration=30.0),
+    "tractor_tow_yawing_projector": dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="tow", motion="yaw", rows="c", sample="target", range_gu=15.0, duration=30.0),
+    "tractor_pull_power125": dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="pull", power_wanted=1.25, rows="c", sample="target", range_gu=15.0, duration=30.0),
+    # Engagement: when does the tractor actually hit (range, shields, arc)?  tr= flag in row c, tractor_hit markers.
+    "tractor_engage_r20":   dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="hold", rows="c", range_gu=20.0, duration=12.0),
+    "tractor_engage_r60":   dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="hold", rows="c", range_gu=60.0, duration=12.0),
+    "tractor_engage_r100":  dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="hold", rows="c", range_gu=100.0, duration=12.0),
+    "tractor_engage_r115":  dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="hold", rows="c", range_gu=115.0, duration=12.0),
+    "tractor_engage_r125":  dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="hold", rows="c", range_gu=125.0, duration=12.0),
+    "tractor_engage_r150":  dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="hold", rows="c", range_gu=150.0, duration=12.0),
+    "tractor_engage_r20_noshields": dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="hold", rows="c", range_gu=20.0, duration=12.0, shields_off=1),
+    "tractor_engage_yaw":   dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="hold", motion="yaw", rows="c", range_gu=20.0, duration=30.0),
+    "tractor_engage_pitch": dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="hold", motion="pitch", rows="c", range_gu=20.0, duration=30.0),
     "tractor_galaxy_galaxy_pull": dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="pull", rows="abc", range_gu=15.0, duration=30.0),
 }
 
