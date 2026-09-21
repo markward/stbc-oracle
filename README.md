@@ -105,7 +105,8 @@ once a boot marker appears (`oracle/vfx_measure.py` reduces them). Note
 `PrintWindow` returns an all-black frame now and then — bursts, not
 single shots. `phaserpatch:<Attr>=<v>[;…]` / `firephaser` / `stopphaser` /
 `phaserstate` do the same for the player's beams (colours as r/g/b), and
-`tractorpatch` / `firetractor` / `stoptractor` for the tractor.
+`tractorpatch` / `firetractor` / `stoptractor` for the tractor;
+`--effects-wrap` counts calls into the `Effects.py` hit hooks (`fx_*` markers).
 
 ## Outputs
 

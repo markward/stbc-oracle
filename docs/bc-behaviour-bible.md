@@ -527,6 +527,7 @@ cadences). File = the capture whose raw rows are the reference.
 | N2 | every non-player object spawns at red alert (E1M1's dock scene: green) with full hull and shields; ambient traffic runs `AvoidObstacles` at 4.0 GU/s; nothing is hidden, cloaked or dying at t = 0 | exact / ±2 % | `scene_*` |
 | N3 | per-mission cast, placements and 90 s autonomous evolution as tabulated in §13 / `docs/mission-scenes.md` (E2M6 fight, E3M2 Warbird warps out by 30 s, E4M5 Enterprise arrives at 46 s) | ±5 GU, ±5 s | `scene_E2M6`, `scene_E3M2`, `scene_E4M5` |
 | V6 | camera-mode stations scale with the watched object's `GetRadius()`: Chase/ReverseChase 4.0 R astern/ahead + 0.1 R up, Target 3.97 R + 0.48 R, ZoomTarget 4.0 R_target short of the target, ViewscreenZoomTarget 8.0 R_target, CinematicReverseTarget 3.97 R_source beyond the source, WideTarget 31.6 R + 4.9 R; absolute GU for FreeOrbit (75), Map (1000, 10 % up), TorpCam (4.00 behind the torpedo, Chase 2.0 s after it is gone), Placement / Locked (exact); FirstPerson at the hardpoint; sweeps settle in 1.0 s (TorpCam 2 s); viewscreen directions at the model hardpoints (§12.1a) | ±2 % | `cam_galaxy_space_modes`, `cam_galaxy_cin_modes`, `cam_galaxy_viewscreen`, `cam_galaxy_torpcam`, `cam_galaxy_script_modes` |
+| X5 | `Effects.py` hit hooks are called by the engine (`PhaserHullHit` per beam hit, `TorpedoShieldHit`/`TorpedoHullHit` per impact) with `pEvent.GetRadius()` = the weapon's `DamageRadiusFactor` (0.150 beam, 0.200 positron), the HIGH puff branch, and the scripted random gates (68 beam hits: 10 explosions, 12 sparks, 11 smoke) | binomial | `vfx_fx_phaser_hull`, `vfx_fx_torp_shield`, `vfx_fx_torp_hull` |
 | X4 | tractor beam: `TractorBeamWidth` scales the beam width linearly (9 → 36 px for 0.3 → 1.2), `MainRadius` and the texture rows do nothing, runtime colour patches do nothing (colour fixed at creation, 95,63,211 on screen for the stock 0.4/0.4/1.0) | ±15 % | `docs/results/vfx/tr_*` |
 | X3 | `CreateDisruptorModel(shell, core, length, width)`: length 1.8 → 6.0 makes the bolt 4× longer at the same width (aspect 12:1 stock), width 0.15 → 0.6 makes it 6× wider, the two colours recolour it; `GetRadius` = length / 2 | ±15 % | `docs/results/vfx/pb_*` |
 | X2 | beam levers read at fire time: `MainRadius` scales the beam width linearly (9 → 44 px for 0.15 → 0.6), `CoreScale` the bright core (9 → 15 px), the four colour slots set the beam colour, `NumSides` is real geometry, the texture row band changes nothing visible; taper is at the emitter end | ±15 % on widths | `docs/results/vfx/ph_*` |
@@ -1027,9 +1028,10 @@ beams is engine-side using `data/Textures/Tactical/shieldhit01–04.TGA`,
 four 32 × 32 inverse-radial masks — dark centre, bright rim — stamped on the
 shield surface at the hit point). Everything below is emitted **at the hit
 point, along the hit normal, attached to the target's node** (`GetObjectHitPoint`,
-`GetObjectHitNormal`), and scaled by the *weapon's* `DamageRadiusFactor` × the
-target radius (`pEvent.GetRadius()`, the same radius that sets the damage
-footprint in §6):
+`GetObjectHitNormal`), and sized from `pEvent.GetRadius()`, which is the *weapon's*
+`DamageRadiusFactor` **as is** — 0.150 for the Kessok's forward beams,
+0.200 for its positron torpedoes (measured, below) — so a beam hit puff is
+0.3 GU and a torpedo hit puff 0.6 GU (`size`), not scaled by the target:
 
 | hit | always | at effect level ≥ MEDIUM | sound |
 |---|---|---|---|
@@ -1052,6 +1054,26 @@ for the duration. Smoke is `CreateSmokeHigh` on `ExplosionB.tga`.
 Ship death (`ObjectExploding` / `CreateObjectExplosion`) reuses the same
 puff/plume/smoke builders at the ship's radius with `Death Explosion 1–6`
 (`explo_flame_01–06.WAV`) — not weapon VFX, noted for completeness.
+
+**Verified on the exe** (`effects_wrap`: every hook and builder in
+`Effects.py` replaced by a counting wrapper for the run;
+`docs/results/vfx/vfx_fx_*.json`, markers `fx_*`). First, the shipped
+`scripts/Effects.pyc` contains every function name, asset path and numeric
+literal quoted above (Python 1.5 marshals floats as text: 0.005, 0.09,
+1.25, 2.5, 120.0, 5/255, 35/255, the 50/20/30 gates are all present). Then
+three 20 s runs, Kessok Heavy on the Galaxy at 57 GU, HIGH effect level:
+
+| run | hook calls | explosions | sparks | smoke | plumes | `GetRadius()` |
+|---|---|---|---|---|---|---|
+| beams, shields off | `PhaserHullHit` **68** | 10 (15 %; script 25 %) | 12 (18 %; 25 %) | 11 (16 %; 15 %) | 33 (2–7 on ~half the explosions) | 0.150 every call |
+| positron torpedoes, shields up | `TorpedoShieldHit` **2** (two hits in 20 s at 3.8 GU/s) | 2 (100 %) | 0 | 0 | 0 | 0.200 |
+| positron torpedoes, shields off | `TorpedoHullHit` **3** | 3 (100 %) | 3 (script 50 %) | 0 (20 %) | 5 | 0.200, 0.200, 0.727 |
+
+The engine does call these three hooks (one `PhaserHullHit` per beam hit
+event, ~3.6/s while one bank fires; one per torpedo impact), the HIGH
+branch (`CreateExplosionPuffHigh`) is what runs, and the gates land within
+binomial noise of the scripted 50/50/30 % at n = 68. One of the three
+torpedo hull hits reported radius 0.727 instead of 0.200 — origin unknown.
 
 ### 14.5 Asset inventory (the game copy, `data/`)
 

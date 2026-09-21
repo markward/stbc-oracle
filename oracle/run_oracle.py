@@ -408,6 +408,7 @@ def main(argv=None) -> int:
     ap.add_argument("--shot-count", type=int, default=1)
     ap.add_argument("--shot-every", type=float, default=0.25)
     ap.add_argument("--shot-delay", type=float, default=0.0)
+    ap.add_argument("--effects-wrap", action="store_true", help="count calls into Effects.py hit hooks (boot markers fx_*)")
     ap.add_argument("--vfx-patch", default="none", help="projectile model override: photon:<i>=<v>,<i>=<v> (1-based CreateTorpedoModel args) or pulse:<i>=<v> (CreateDisruptorModel args)")
     a = ap.parse_args(argv)
 
@@ -423,7 +424,7 @@ def main(argv=None) -> int:
         "time_scale": a.time_scale, "target_alert": a.target_alert, "tractor_mode": a.tractor_mode,
         "shield_power": a.shield_power, "gen_frac": a.gen_frac,
         "ai": 1 if a.ai else 0, "ai_level": a.ai_level, "ai_log": 1 if a.ai_log else 0,
-        "target_motion": a.target_motion, "target_fire": 1 if a.target_fire else 0, "sample": a.sample, "view": a.view, "warp_patch": a.warp_patch, "mission": a.mission, "cam_mode": a.cam_mode, "cam_step_s": a.cam_step_s, "vfx_patch": a.vfx_patch,
+        "target_motion": a.target_motion, "target_fire": 1 if a.target_fire else 0, "sample": a.sample, "view": a.view, "warp_patch": a.warp_patch, "mission": a.mission, "cam_mode": a.cam_mode, "cam_step_s": a.cam_step_s, "vfx_patch": a.vfx_patch, "effects_wrap": "1" if a.effects_wrap else "0",
         "warp_stop_gu": a.warp_stop_gu, "warp_time": a.warp_time, "warp_dest": a.warp_dest, "warp_clear": a.warp_clear,
     }
     result = run(a.oracle_dir, params, a.timeout, a.shot, a.shot_at, a.shot_on, a.shot_count, a.shot_every, a.shot_delay)

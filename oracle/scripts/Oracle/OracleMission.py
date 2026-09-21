@@ -85,6 +85,7 @@ def _read_inputs():
     P["sample"]       = _gets("sample", "attacker")      # attacker|target : which ship row c follows
     P["view"]         = _gets("view", "bridge")          # bridge|tactical : the player's view once the sim runs
     P["vfx_patch"]    = _gets("vfx_patch", "none")       # photon:<i>=<v>,... | pulse:<i>=<v>,... : override projectile model args (see _apply_vfx_patch)
+    P["effects_wrap"] = _gets("effects_wrap", "0")       # 1: count calls into Effects.py hit hooks and effect builders
     P["cam_mode"]     = _gets("cam_mode", "none")        # comma list of camera steps applied every cam_step_s from act time (see _cam_step)
     P["cam_step_s"]   = _getf("cam_step_s", 4.0)
     P["warp_patch"]   = _gets("warp_patch", "none")      # comma list of WarpSequence player-branch camera steps to no-op (bisecting a crash)
@@ -708,6 +709,44 @@ def _OraclePulseCreate(pTorp):
     _log.mark("vfx_pulse_created", "1")
     return 0
 
+class _Counted:
+    """Wrap an Effects.py function: count calls, remember the first few hit radii."""
+    def __init__(self, name, fn):
+        self.name = name
+        self.fn = fn
+        self.n = 0
+        self.radii = []
+    def __call__(self, *args):
+        self.n = self.n + 1
+        try:
+            if len(self.radii) < 6 and len(args) >= 2 and hasattr(args[1], "GetRadius"):
+                self.radii.append("%.3f" % args[1].GetRadius())
+            elif len(self.radii) < 6 and len(args) >= 3 and hasattr(args[2], "GetRadius"):
+                self.radii.append("%.3f" % args[2].GetRadius())
+        except:
+            pass
+        return apply(self.fn, args)
+
+g_counted = []
+
+def _wrap_effects():
+    try:
+        import Effects
+        for name in ("TorpedoShieldHit", "TorpedoHullHit", "PhaserHullHit",
+                     "CreateWeaponExplosion", "CreateWeaponSparks", "CreateWeaponSmoke",
+                     "CreateExplosionPuffHigh", "CreateExplosionPuffMed", "CreateExplosionPuffLow", "CreateExplosionPlumeHigh"):
+            c = _Counted(name, getattr(Effects, name))
+            setattr(Effects, name, c)
+            g_counted.append(c)
+        _log.mark("effects_wrapped", str(len(g_counted)))
+    except:
+        _log.mark("effects_wrap_error", _log.exc())
+
+def _report_effects():
+    for c in g_counted:
+        if c.n:
+            _log.mark("fx_" + c.name, "n=%d r=%s" % (c.n, string.join(c.radii, ",")))
+
 def _OraclePulseSpeed():
     return g_vfx[1][4]
 
@@ -1011,6 +1050,8 @@ def OnAct(pObject, pEvent):
         if P["motion"] != "none":
             _act_motion()
         _apply_vfx_patch()
+        if P["effects_wrap"] == "1":
+            _wrap_effects()
         _act_target()
         if P["cam_mode"] != "none":
             g_cam_steps = string.split(P["cam_mode"], ",")
@@ -1232,6 +1273,8 @@ def OnEnd(pObject, pEvent):
             App.ArtificialIntelligence_LogAITree(None)   # flush the tree log
         except:
             pass
+    if g_counted:
+        _report_effects()
     ok = _log.flush(1)
     _log.mark("flushed", "rows=%d ok=%d" % (g_rows, ok))
     try:
