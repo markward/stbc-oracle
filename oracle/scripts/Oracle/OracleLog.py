@@ -34,6 +34,14 @@ def mark(key, value):
     except:
         pass
 
+def pulse(value):
+    """Heartbeat: one key rewritten in place (crash forensics), not a mark."""
+    try:
+        _cfg.SetStringValue("OracleBoot", "zz_pulse", _short(value))
+        _cfg.SaveConfigFile("oracle_boot.cfg")
+    except:
+        pass
+
 def exc():
     return "%s %s" % (str(sys.exc_type), str(sys.exc_value))
 

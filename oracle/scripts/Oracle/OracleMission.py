@@ -81,7 +81,10 @@ def _read_inputs():
     P["ai"]           = int(_getf("ai", 0))             # 1 = leave the QuickBattle AI on the attacker
     P["ai_level"]     = _getf("ai_level", 0.5)          # BasicAttack Difficulty 0.0 / 0.5 / 1.0
     P["ai_log"]       = int(_getf("ai_log", 0))         # 1 = ArtificialIntelligence_LogAITree("AITree.txt") (armed in OracleGame)
-    P["target_motion"] = _gets("target_motion", "none")  # none|impulse|yaw : player ship drives itself at act time
+    P["target_motion"] = _gets("target_motion", "none")  # none|impulse|yaw|warp|warpset : player ship drives itself at act time
+    P["sample"]       = _gets("sample", "attacker")      # attacker|target : which ship row c follows
+    P["view"]         = _gets("view", "bridge")          # bridge|tactical : the player's view once the sim runs
+    P["warp_patch"]   = _gets("warp_patch", "none")      # comma list of WarpSequence player-branch camera steps to no-op (bisecting a crash)
     P["target_fire"]  = int(_getf("target_fire", 0))    # 1 = player phasers + torpedoes fire at the attacker at act time
     P["warp_stop_gu"] = _getf("warp_stop_gu", 50.0)     # InSystemWarp stop distance from the target
     P["warp_time"]    = _getf("warp_time", 5.0)         # WarpSequence duration for set-to-set
@@ -410,6 +413,13 @@ def _OracleStartSimulation2(pObject, pEvent):
         g_banks = _emitters(g_pAttacker)
         g_subs = _all_subsystems(g_pTarget)
         _log.mark("placed", "banks=%d subs=%d range=%.2f" % (len(g_banks), len(g_subs), _range()))
+        if P["view"] == "tactical":
+            try:
+                pTop = App.TopWindow_GetTopWindow()
+                pTop.ForceTacticalVisible()
+                _log.mark("view", "tactical bv=%d tv=%d" % (pTop.IsBridgeVisible(), pTop.IsTacticalVisible()))
+            except:
+                _log.mark("view_error", _log.exc())
         now = App.g_kUtopiaModule.GetGameTime()
         g_t0 = now + P["settle_s"]
         g_timers.append(MissionLib.CreateTimer(ET_SAMPLE, __name__ + ".OnSample", g_t0, P["sample_dt"], -1))
@@ -497,16 +507,7 @@ def _act_motion():
         # Oracle package the same string resolves package-relative under
         # Python 1.5 and fails ("No module named Vesuvi5"), and the TG debug
         # console pops on that ImportError even though it is caught.
-        try:
-            import QuickBattle.QuickBattle
-            QB = QuickBattle.QuickBattle
-            exec "_oracle_dest = __import__('Systems.Vesuvi.Vesuvi5')" in QB.__dict__
-            pModule = QB.__dict__["_oracle_dest"]
-            if App.g_kSetManager.GetSet("Vesuvi5") is None:
-                pModule.Initialize()
-            _log.mark("dest_set", str(App.g_kSetManager.GetSet("Vesuvi5")))
-        except:
-            _log.mark("dest_set_error", _log.exc())
+        if not _create_dest_set():
             return
         if m == "warpset_moving":
             g_pAttacker.SetImpulse(1.0, fwd, App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
@@ -556,6 +557,18 @@ def _act_target():
         elif tm == "warp":
             ok = g_pTarget.InSystemWarp(g_pAttacker, P["warp_stop_gu"])
             _log.mark("player_warp", "ok=%s" % str(ok))
+        elif tm == "warpset":
+            _create_dest_set()
+            _apply_warp_patch()
+            _prewarp_camera(g_pTarget)
+            _warpset(g_pTarget)
+        elif tm == "settarget":
+            g_pTarget.SetTarget(g_pAttacker.GetName())
+            _log.mark("settarget", g_pAttacker.GetName())
+        elif tm == "cinematic":
+            # what the player warp does first: non-interactive cinematic view, no control
+            App.TGScriptAction_Create("Actions.CameraScriptActions", "StartCinematicMode", 0).Play()
+            _log.mark("cinematic", "1")
     except:
         _log.mark("target_motion_error", _log.exc())
     if P["target_fire"]:
@@ -593,33 +606,41 @@ def OnRecmd(pObject, pEvent):
         _log.mark("recmd_error", _log.exc())
 
 def OnWarpSet(pObject, pEvent):
-    """AI/PlainAI/Warp.py's recipe, step by step with markers."""
+    _warpset(g_pAttacker)
+
+def _warpset(pShip):
+    """AI/PlainAI/Warp.py's recipe, step by step with markers, on pShip."""
     try:
-        pWarp = g_pAttacker.GetWarpEngineSubsystem()
+        pWarp = pShip.GetWarpEngineSubsystem()
         if pWarp:
             pWarp.SetPowerPercentageWanted(1.0)
             pWarp.TurnOn()
-        pImp = g_pAttacker.GetImpulseEngineSubsystem()
+        pImp = pShip.GetImpulseEngineSubsystem()
         if pImp:
             pImp.SetPowerPercentageWanted(1.0)
             pImp.TurnOn()
         if P["warp_clear"] > 0.0:
-            # The 700 GU/s streak runs straight through the target at the origin
-            # (warpset_kessok_rest: 10 rad/s tumble from the collision); park it aside.
-            _place(g_pTarget, P["warp_clear"], 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0)
-            _still(g_pTarget)
+            # The 700 GU/s streak runs straight through whatever sits on the
+            # heading (warpset_kessok_rest: 10 rad/s tumble from hitting the
+            # target at the origin); park the other ship off the line.
+            pOther = g_pTarget
+            if pShip.GetName() == g_pTarget.GetName():
+                pOther = g_pAttacker
+            kL = pOther.GetWorldLocation()
+            _place(pOther, kL.x + P["warp_clear"], kL.y, kL.z, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0)
+            _still(pOther)
             pPM = g_pSet.GetProximityManager()
             if pPM:
-                pPM.UpdateObject(g_pTarget)
-            _log.mark("warp_clear", "target at x=%.0f" % P["warp_clear"])
-        g_pAttacker.SetSpeed(0, App.TGPoint3_GetModelForward(), App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
+                pPM.UpdateObject(pOther)
+            _log.mark("warp_clear", "%s moved +x %.0f" % (pOther.GetName(), P["warp_clear"]))
+        pShip.SetSpeed(0, App.TGPoint3_GetModelForward(), App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
         vZero = App.TGPoint3(); vZero.SetXYZ(0.0, 0.0, 0.0)
-        g_pAttacker.SetTargetAngularVelocityDirect(vZero)
+        pShip.SetTargetAngularVelocityDirect(vZero)
         _log.mark("warpset_1_engines", "warp=%s" % str(pWarp is not None))
         if P["warp_dest"] == "none":
-            pSeq = App.WarpSequence_Create(g_pAttacker, None, P["warp_time"])
+            pSeq = App.WarpSequence_Create(pShip, None, P["warp_time"])
         else:
-            pSeq = App.WarpSequence_Create(g_pAttacker, P["warp_dest"], P["warp_time"], "Player Start")
+            pSeq = App.WarpSequence_Create(pShip, P["warp_dest"], P["warp_time"], "Player Start")
         _log.mark("warpset_2_created", str(pSeq))
         pMission = MissionLib.GetMission()
         pMission.AddPythonFuncHandlerForInstance(ET_WARP_DONE, __name__ + ".OnWarpDone")
@@ -627,13 +648,86 @@ def OnWarpSet(pObject, pEvent):
         pEvent.SetEventType(ET_WARP_DONE)
         pEvent.SetDestination(pMission)
         pSeq.AddCompletedEvent(pEvent)
-        pSeq.SetEventDestination(g_pAttacker)
+        pSeq.SetEventDestination(pShip)
         _log.mark("warpset_3_wired", "1")
         pSeq.Play()
         _log.mark("warpset_4_played", "t=%.3f speed=%.3f" % (
-            App.g_kUtopiaModule.GetGameTime() - g_t0, _speed(g_pAttacker)))
+            App.g_kUtopiaModule.GetGameTime() - g_t0, _speed(pShip)))
     except:
         _log.mark("warpset_error", _log.exc())
+
+def _create_dest_set():
+    try:
+        import QuickBattle.QuickBattle
+        QB = QuickBattle.QuickBattle
+        exec "_oracle_dest = __import__('Systems.Vesuvi.Vesuvi5')" in QB.__dict__
+        pModule = QB.__dict__["_oracle_dest"]
+        if App.g_kSetManager.GetSet("Vesuvi5") is None:
+            pModule.Initialize()
+        _log.mark("dest_set", str(App.g_kSetManager.GetSet("Vesuvi5")))
+        return 1
+    except:
+        _log.mark("dest_set_error", _log.exc())
+        return 0
+
+def _prewarp_camera(pShip):
+    """Bridge/HelmMenuHandlers.WarpPressed's camera part, verbatim: the player
+    warp assumes a cutscene camera already owns the origin set."""
+    try:
+        pSet = pShip.GetContainingSet()
+        sSet = pSet.GetName()
+        App.TGScriptAction_Create("Actions.CameraScriptActions", "StartCinematicMode", 0).Play()
+        MissionLib.RemoveControl()
+        fSideOffset = (App.g_kSystemWrapper.GetRandomNumber(1400) - 700) / 100.0
+        pSeq = App.TGSequence_Create()
+        pSeq.AddAction(App.TGScriptAction_Create("Actions.CameraScriptActions", "CutsceneCameraBegin", sSet, "PreWarpCutsceneCamera"))
+        pSeq.AddAction(App.TGScriptAction_Create("Actions.CameraScriptActions", "DropAndWatch", sSet, pShip.GetName()))
+        for (attr, val) in (("AwayDistance", 100000.0), ("ForwardOffset", -7.0), ("SideOffset", fSideOffset),
+                            ("RangeAngle1", 230.0), ("RangeAngle2", 310.0), ("RangeAngle3", -10.0), ("RangeAngle4", 10.0)):
+            pSeq.AddAction(App.TGScriptAction_Create("Actions.CameraScriptActions", "SetModeAttribute",
+                                                     sSet, "PreWarpCutsceneCamera", "DropAndWatch", "SetAttrFloat", attr, val))
+        pSeq.AddAction(App.TGScriptAction_Create("WarpSequence", "FixCamera", sSet, "PreWarpCutsceneCamera"))
+        pSeq.Play()
+        import Bridge.HelmMenuHandlers
+        Bridge.HelmMenuHandlers.g_sPrewarpCameraSet = sSet
+        Bridge.HelmMenuHandlers.g_sPrewarpCameraName = "PreWarpCutsceneCamera"
+        _log.mark("prewarp_camera", "set=%s side=%.2f" % (sSet, fSideOffset))
+    except:
+        _log.mark("prewarp_camera_error", _log.exc())
+
+def _noop_action(pAction, *args):
+    return 0
+
+def _apply_warp_patch():
+    """Stub named camera steps of WarpSequence.py's player branch (crash bisection)."""
+    if P["warp_patch"] == "none":
+        return
+    try:
+        import WarpSequence
+        import Actions.CameraScriptActions
+        table = {
+            "cin":       (Actions.CameraScriptActions, "StartCinematicMode"),
+            "cinstop":   (Actions.CameraScriptActions, "StopCinematicMode"),
+            "cutcam":    (Actions.CameraScriptActions, "CutsceneCameraBegin"),
+            "cutend":    (Actions.CameraScriptActions, "CutsceneCameraEnd"),
+            "orient":    (Actions.CameraScriptActions, "SetCameraPositionAndFacing"),
+            "drop":      (Actions.CameraScriptActions, "DropAndWatch"),
+            "modeattr":  (Actions.CameraScriptActions, "SetModeAttribute"),
+            "bridgecam": (WarpSequence, "BridgeCameraForward"),
+            "vs":        (WarpSequence, "CheckForBeginningCameraChange"),
+            "fixcam":    (WarpSequence, "FixCamera"),
+            "camchange": (WarpSequence, "CheckForCameraChange"),
+            "control":   (WarpSequence, "CheckForReturnControl"),
+        }
+        done = []
+        for name in string.split(P["warp_patch"], ","):
+            if table.has_key(name):
+                mod, fn = table[name]
+                setattr(mod, fn, _noop_action)
+                done.append(name)
+        _log.mark("warp_patch", string.join(done, ","))
+    except:
+        _log.mark("warp_patch_error", _log.exc())
 
 def _speed(pShip):
     v = pShip.GetVelocityTG()
@@ -663,6 +757,79 @@ def OnAct(pObject, pEvent):
             App.g_kUtopiaModule.GetGameTime() - g_t0, P["weapon"], P["motion"]))
     except:
         _log.mark("act_error", _log.exc())
+
+g_cam_err = 0
+g_cam_meta = 0
+g_last_row = "-"
+
+def _setname(pSet):
+    if pSet is None:
+        return "-"
+    return string.replace(pSet.GetName(), " ", "_")
+
+def _camera_row(t):
+    """Row d: the player camera (Camera.MakePlayerCamera) and the window state."""
+    global g_cam_err, g_cam_meta
+    try:
+        pTop = App.TopWindow_GetTopWindow()
+        pCam = App.Game_GetCurrentGame().GetPlayerCamera()
+        rs = _setname(App.g_kSetManager.GetRenderedSet())
+        cs = "-"; mode = "-"; ps = "-"; fs = "-"
+        if pCam is not None:
+            cs = _setname(pCam.GetContainingSet())
+            pMode = pCam.GetCurrentCameraMode()
+            if pMode is not None:
+                mode = string.replace(pMode.GetName(), " ", "_")
+            ps = _p3(pCam.GetWorldLocation())
+            fs = _p3(pCam.GetWorldForwardTG())
+            if not g_cam_meta:
+                g_cam_meta = 1
+                try:
+                    kF = pCam.GetNiFrustum()
+                    _log.meta("player_camera", "name=%s frustum right=%.4f top=%.4f near=%.3f far=%.1f" % (
+                        pCam.GetName(), kF.m_fRight, kF.m_fTop, kF.m_fNear, kF.m_fFar))
+                except:
+                    _log.meta("player_camera", "frustum err " + _log.exc())
+        cin = 0
+        try:
+            pFocus = pTop.GetFocus()
+            pCinW = App.CinematicWindow_Cast(pTop.FindMainWindow(App.MWT_CINEMATIC))
+            if pFocus is not None and pCinW is not None and pFocus.GetObjID() == pCinW.GetObjID():
+                cin = 1
+        except:
+            cin = -1
+        line = "d t=%.4f rs=%s cs=%s mode=%s p=%s fw=%s bv=%d tv=%d cut=%d cin=%d" % (
+            t, rs, cs, mode, ps, fs, int(pTop.IsBridgeVisible()), int(pTop.IsTacticalVisible()),
+            int(pTop.IsCutsceneMode()), cin)
+        _log.row(line)
+        global g_last_row
+        g_last_row = line[:110]
+        # Row e: the rendered set's ACTIVE camera -- what is actually on screen
+        # (cutscene cameras are separate objects made active in the set).
+        try:
+            pRS = App.g_kSetManager.GetRenderedSet()
+            pAC = None
+            if pRS is not None:
+                pAC = pRS.GetActiveCamera()
+            if pAC is not None:
+                amode = "-"
+                pM = pAC.GetCurrentCameraMode()
+                if pM is not None:
+                    amode = string.replace(pM.GetName(), " ", "_")
+                same = 0
+                if pCam is not None and pAC.GetObjID() == pCam.GetObjID():
+                    same = 1
+                _log.row("e t=%.4f set=%s cam=%s pc=%d mode=%s p=%s fw=%s" % (
+                    t, rs, string.replace(pAC.GetName(), " ", "_"), same, amode,
+                    _p3(pAC.GetWorldLocation()), _p3(pAC.GetWorldForwardTG())))
+        except:
+            if not g_cam_err:
+                g_cam_err = 1
+                _log.mark("cam_e_error", _log.exc())
+    except:
+        if not g_cam_err:
+            g_cam_err = 1
+            _log.mark("cam_error", _log.exc())
 
 def OnSample(pObject, pEvent):
     global g_rows
@@ -695,10 +862,13 @@ def OnSample(pObject, pEvent):
                 conds.append(s.GetCondition())
             _log.row("b t=%.4f s=%s" % (t, _fmt_list(conds, "%.0f")))
         if string.find(P["rows"], "c") >= 0:
-            v = g_pAttacker.GetVelocityTG()
-            w = g_pAttacker.GetAngularVelocityTG()
-            f = g_pAttacker.GetWorldForwardTG()
-            p = g_pAttacker.GetWorldLocation()
+            pS = g_pAttacker
+            if P["sample"] == "target":
+                pS = g_pTarget
+            v = pS.GetVelocityTG()
+            w = pS.GetAngularVelocityTG()
+            f = pS.GetWorldForwardTG()
+            p = pS.GetWorldLocation()
             sp = (v.x * v.x + v.y * v.y + v.z * v.z) ** 0.5
             extra = ""
             if P["ai"]:
@@ -721,17 +891,17 @@ def OnSample(pObject, pEvent):
             if not P["ai"]:
                 # impulse command fraction and the engine's actual power fraction
                 try:
-                    pImp = g_pAttacker.GetImpulseEngineSubsystem()
+                    pImp = pS.GetImpulseEngineSubsystem()
                     if pImp is not None:
-                        extra = extra + " im=%.2f ip=%.2f" % (g_pAttacker.GetImpulse(), pImp.GetPowerPercentage())
-                    pWs = g_pAttacker.GetWarpEngineSubsystem()
+                        extra = extra + " im=%.2f ip=%.2f" % (pS.GetImpulse(), pImp.GetPowerPercentage())
+                    pWs = pS.GetWarpEngineSubsystem()
                     if pWs is not None:
                         extra = extra + " ws=%d,%d" % (pWs.GetWarpState(), pWs.IsOn())
                 except:
                     pass
             try:
-                extra = extra + " isw=%d" % int(g_pAttacker.IsDoingInSystemWarp())
-                pSetNow = g_pAttacker.GetContainingSet()
+                extra = extra + " isw=%d" % int(pS.IsDoingInSystemWarp())
+                pSetNow = pS.GetContainingSet()
                 setname = "-"
                 if pSetNow is not None:
                     setname = string.replace(pSetNow.GetName(), " ", "_")
@@ -740,9 +910,13 @@ def OnSample(pObject, pEvent):
                 pass
             _log.row("c t=%.4f p=%s v=%s w=%s fw=%s sp=%.4f%s" % (
                 t, _p3(p), _p3(v), _p3(w), _p3(f), sp, extra))
+        if string.find(P["rows"], "d") >= 0:
+            _camera_row(t)
         g_rows = g_rows + 1
         if g_rows == 1:
             _log.mark("first_sample", "t=%.3f" % t)
+        if g_rows % 16 == 0:
+            _log.pulse("t=%.3f rows=%d last=%s" % (t, g_rows, g_last_row))
     except:
         _log.mark("sample_error", _log.exc())
 

@@ -374,7 +374,14 @@ the streak line) is a scripted five-phase sequence, not physics:
 | 4. dewarp in the destination | **~1.9 s** | appears ~640 GU from the placement and is *moved* to it (~340 GU/s) with `GetVelocity` = 0 — scripted motion, not velocity |
 | 5. arrival | — | at the placement (`Player Start`), facing the placement's heading, speed 0, no rotation; the script then commands `SetImpulse(0.2)` and the ship approaches **0.740 GU/s = 0.2 × MaxSpeed** under the ordinary 1 s law (0.49 at +1 s, 0.71 at +3 s, 0.740 from +6 s) |
 
-Total 11.5 s for a 5 s warp. Contract for a remake: after a set-to-set warp
+Total 11.5 s for a 5 s warp *for an AI ship*. **For the player ship the same
+sequence takes 15.5 s** (`warpcam_galaxy`, Galaxy, `warp_time` 5.0): the
+entry delay is one second longer (2.5 s from `Play()` to the streak instead
+of 1.5), the streak is the same 2.0 s, the stay in the `warp` set is **7.0 s
+= `warp_time` + 2.0** (the during-warp actions wait for the rendered set to
+switch to the bridge), the dewarp slide is 2.0 s (838 GU → placement, ~320
+GU/s) and the completed event fires 2.0 s after arrival, when control is
+returned (§12.2). Contract for a remake: after a set-to-set warp
 the ship is **at the placement, at rest, then creeping at 0.2 × MaxSpeed**
 — it does not arrive with its pre-warp velocity (the sequence zeroes it
 before entry) and it does not arrive at `MaxSpeed` as an in-system warp
@@ -512,6 +519,7 @@ cadences). File = the capture whose raw rows are the reference.
 | P4 | bolt = script damage × emitter DamageScale; power setting changes shot cost 0.5/1/2, not damage | exact | `pulse_warbird_front_40_{meta,low,high}` |
 | S6 | shield generator below DisabledPercentage ⇒ all faces 0, no regen | exact | `regen_gen{50,20}_face50` |
 | S7 | port is face 4 | exact | `phaser_high_port_57` |
+| V5 | player warp camera choreography: pre-warp cutscene camera 30.8 GU astern within 0.2 s of `Play()`, stays put while the ship streaks away; bridge viewscreen from 2.0 s after the ship enters the warp set until 0.6 s before it leaves; destination cutscene camera 53 GU ahead of the placement, aimed at the arriving ship, live 0.6 s before the ship appears; external Chase view and control back 2.0 s after arrival | ±0.2 s, ±1 GU | `warpcam_galaxy` |
 
 ---
 
@@ -521,10 +529,9 @@ cadences). File = the capture whose raw rows are the reference.
   GU/s in every mode).
 * Collision damage split per hull pairing (BoP → Kessok: 1417 to the
   Kessok, BoP survived at 5.2 GU/s — no clean constant).
-* Camera: what the warp sequence does with the camera (`WarpSequence.py`
-  drives it explicitly — `BridgeCameraForward`, `FixCamera`, cinematic
-  mode dropped 2 s after dewarp), and camera placement/behaviour in
-  general (external view offsets, tracking, cutscene cameras).
+* Camera: the bridge (viewscreen) cameras and the remaining `Camera.py`
+  modes (Reverse, Map, ZoomTarget, Placement, Locked, FirstPerson) are not
+  yet sampled; §12 covers Chase, Target, cinematic DropAndWatch and the warp.
 * Shield regen vs a reactor that cannot supply the generator's
   `NormalPowerPerSecond` (only the generator's own power-wanted was varied).
 * AI: the Warbird AI crashes the game (Bird of Prey, also a cloaker, does
@@ -609,3 +616,64 @@ branch) — open.
   uncapped direct command and cap only the fraction command;
 * firing is a per-tick "try to fire" on every system; the engine's arc,
   range and charge gates do the rest.
+
+
+---
+
+## 12. Camera
+
+Sampled from the player ship (`sample=target`, rows `c`+`d`+`e`): row `d`
+is the **player camera** (`Camera.MakePlayerCamera`, a `SpaceCamera` named
+`MainPlayerCamera` that follows the player between sets and carries the
+named modes Chase / Target / DropAndWatch / Viewscreen…); row `e` is the
+**active camera of the rendered set** — what is actually on screen, which
+during cutscenes is a separate `CameraObjectClass` (`CutsceneCameraBegin`)
+made active in the set. All camera modes are engine-side (C++
+`CameraMode`); the scripts only pick modes and set attributes, so a remake
+has to reproduce the numbers below, not a script.
+
+Harness facts: the Quick Battle intro cutscene (XO exposition) owns the
+view until **t ≈ 7.3 s** after the first sample — camera scenarios act at
+`fire_at` 10. In the oracle the game is in the external (tactical) view
+from the first sample (`bv=0 tv=1`) regardless of `ForceBridgeVisible`.
+
+### 12.2 What the viewer sees during a player set-to-set warp (`warpcam_galaxy`)
+
+The Galaxy at the origin, `WarpSequence_Create(player, "Systems.Vesuvi.Vesuvi5",
+5.0, "Player Start")` at t = 10.0, preceded by the helm's own pre-warp
+camera (`HelmMenuHandlers.WarpPressed`: `StartCinematicMode`, `RemoveControl`,
+a `PreWarpCutsceneCamera` in `DropAndWatch` with ForwardOffset −7, SideOffset
+random ±7, RangeAngle 230–310°). Times are seconds after `Play()`.
+
+| t | rendered set / active camera | mode | where the camera is |
+|---|---|---|---|
+| 0.0–0.2 | origin / `MainPlayerCamera` | Chase | 17.4 astern (above) |
+| 0.2 | origin / **`PreWarpCutsceneCamera`** | DropAndWatch | **30.8 GU from the ship: 30.6 astern, ~3 to port, 3–5 below**, aimed at it; drifts < 1 GU/s |
+| 2.5 | (same) | | ship streaks off at 700 GU/s; the camera **stays where it dropped** and tracks the ship (205 GU behind at +0.25 s, 1298 at +1.75 s) — the ship simply shrinks to a point |
+| 4.5 | (same) | | ship moved to the `warp` set; origin set still rendered for 2.0 s with nothing in frame |
+| 6.5 | **`bridge` / `maincamera`** | GalaxyBridgeCaptain | the bridge; the viewscreen shows the `warp` set from the player camera's `ViewscreenForward` station (2.9 GU behind and 0.5 above the ship origin, looking forward) |
+| 10.9 | **Vesuvi5 / `WarpCutsceneCamera`** | DropAndWatch | switched **0.6 s before the ship appears** (`warp_time` − 0.6 after the bridge cut); camera parked **53 GU ahead of the placement**, aimed back along the arrival line |
+| 11.5 | (same) | | ship appears 838 GU out and slides in at ~320 GU/s, camera tracks it (709 → 53 GU) |
+| 13.5 | (same) | | ship at the placement, `SetImpulse(0.2)`; camera holds 52–53 GU ahead, drifting ~4.5 GU/s sideways |
+| 15.5 | Vesuvi5 / `MainPlayerCamera` | Chase | cutscene cameras dropped, tactical view and input back; Chase re-acquires from 16.4 to 18.6 GU astern over 1 s as the ship creeps at 1.26 GU/s (= 0.2 × 6.3) |
+
+Player camera bookkeeping during this: it moves to the `warp` set with the
+ship (4.6 s), takes `ViewscreenForward` when the bridge is rendered (6.6
+s), moves to Vesuvi5 with the ship (11.6 s) and returns to Chase at 15.5 s.
+`IsCutsceneMode()` is **0** throughout — the warp is cinematic-window mode,
+not a cutscene.
+
+### 12.3 Harness notes (cost a session)
+
+* A **player** set-to-set warp access-violates at the destination switch
+  (fault `0x004090EB`, ~11 s after `Play()`) unless the destination set
+  already exists — the engine's on-demand load of the system for the
+  *rendered-set* switch is what dies. Create it first (`_create_dest_set`:
+  import the system module in `QuickBattle`'s namespace and `Initialize()`).
+  The AI-ship warp never rendered the destination, which is why it worked.
+* The stock player warp always has the helm's pre-warp cutscene camera in
+  place; replicate `WarpPressed` before `Play()` or the origin set is
+  rendered through the player camera while its target leaves the set.
+* The Galaxy's streak runs along its heading (−Y at the origin) — straight
+  through the attacker at (0, −300, 0). `warp_clear` moves the *other*
+  ship 200 GU off the line (W3).

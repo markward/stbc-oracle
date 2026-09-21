@@ -69,6 +69,13 @@ run. Nothing in the stock script tree is modified.
    it and arrived spinning at 10 rad/s, which masqueraded as a post-warp
    speed law for a session. `warp_clear=<GU>` moves the target aside first.
    Sample angular velocity whenever a speed looks wrong.
+8. **A player-ship set-to-set warp crashes at the destination switch** unless
+   the destination set was created beforehand (the engine loading it for the
+   rendered-set switch access-violates, `0x004090EB`), and the stock warp
+   assumes the helm's pre-warp cutscene camera exists (`WarpPressed`). The
+   Quick Battle intro cutscene owns the view until ~7.3 s — camera scenarios
+   act at `fire_at` 10. `oracle_boot.cfg`'s `zz_pulse` heartbeat (rewritten
+   every 16 samples) is how a crash gets timed.
 
 ## Inputs (`oracle_in.cfg [OracleIn]`, all set by the driver)
 
@@ -78,7 +85,8 @@ run. Nothing in the stock script tree is modified.
 180 astern), `elev_deg`, `intensity` (0/1/2 = LOW/MED/HIGH), `charge`,
 `power_wanted`, `shield_face`/`shield_frac`, `shields_off`, `settle_s`,
 `fire_at`, `duration`, `sample_dt`, `disable_target_weapons`, `rows`
-(`a` weapon/shields/hull, `b` subsystem conditions, `c` attacker motion).
+(`a` weapon/shields/hull, `b` subsystem conditions, `c` motion of the
+`sample` ship, `d` player camera, `e` the rendered set's active camera).
 
 ## Outputs
 

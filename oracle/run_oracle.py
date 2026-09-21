@@ -168,9 +168,9 @@ def parse_row(line: str) -> dict:
             d[k] = _floats(v)
         elif k == "fi":
             d[k] = [int(x) for x in v.split(",") if x != ""]
-        elif k in ("tgt", "fire", "set", "ws"):
+        elif k in ("tgt", "fire", "set", "ws", "rs", "cs", "mode", "fr", "cam"):
             d[k] = v
-        elif k == "isw":
+        elif k in ("isw", "bv", "tv", "cut", "cin", "pc"):
             d[k] = int(v)
     return d
 
@@ -186,14 +186,14 @@ def parse_output(oracle_dir: Path) -> dict:
         sec = parse_cfg_section(path, "OracleOut")
         keys = sorted(k for k in sec if k.startswith("r") and k[1:].isdigit())
         raw_rows.extend(sec[k] for k in keys if sec[k] != "")
-    rows = {"a": [], "b": [], "c": []}
+    rows = {"a": [], "b": [], "c": [], "d": [], "e": []}
     for line in raw_rows:
         d = parse_row(line)
         rows.setdefault(d["kind"], []).append(d)
     subs = [meta[k].split("|") for k in sorted(meta) if k.startswith("sub")]
     boot = parse_cfg_section(oracle_dir / BOOT_CFG, "OracleBoot")
     hook = parse_cfg_section(oracle_dir / BOOT_CFG, "OracleHook")
-    return {"meta": meta, "rows": rows["a"], "sub_rows": rows["b"], "motion_rows": rows["c"],
+    return {"meta": meta, "rows": rows["a"], "sub_rows": rows["b"], "motion_rows": rows["c"], "camera_rows": rows["d"], "active_camera_rows": rows["e"],
             "subsystems": [{"name": x[0], "max": float(x[1]) if len(x) > 1 and x[1] != "err" else None,
                             "radius": float(x[2]) if len(x) > 2 else None,
                             "pos": _floats(x[3]) if len(x) > 3 else None} for x in subs],
@@ -229,6 +229,24 @@ def summarise(result: dict) -> str:
         wmax = max((sum(x * x for x in r["w"]) ** 0.5) for r in mrows)
         lines.append(f"motion: speed {sp[0]:.3f} -> max {max(sp):.3f} (final {sp[-1]:.3f}) GU/s; "
                      f"max |ang vel| {wmax:.4f} rad/s over {len(mrows)} samples")
+    crows = result.get("camera_rows") or []
+    if crows:
+        segs = []
+        for r in crows:
+            key = (r.get("rs"), r.get("cs"), r.get("mode"), r.get("bv"), r.get("tv"), r.get("cut"), r.get("cin"))
+            if not segs or segs[-1][0] != key:
+                segs.append((key, r["t"]))
+        desc = "; ".join(f"{t:.2f}s rs={k[0]} cs={k[1]} mode={k[2]} bv={k[3]} tv={k[4]} cut={k[5]} cin={k[6]}" for k, t in segs[:12])
+        lines.append(f"camera: {len(crows)} samples, {len(segs)} states: {desc}")
+    erows = result.get("active_camera_rows") or []
+    if erows:
+        segs = []
+        for r in erows:
+            key = (r.get("set"), r.get("cam"), r.get("pc"), r.get("mode"))
+            if not segs or segs[-1][0] != key:
+                segs.append((key, r["t"]))
+        desc = "; ".join(f"{t:.2f}s {k[0]}/{k[1]} player={k[2]} mode={k[3]}" for k, t in segs[:12])
+        lines.append(f"active camera: {len(segs)} states: {desc}")
     return chr(10).join(lines) if lines else "no rows"
 
 
@@ -328,7 +346,10 @@ def main(argv=None) -> int:
     ap.add_argument("--ai", action="store_true", help="leave the Quick Battle AI driving the attacker")
     ap.add_argument("--ai-level", type=float, default=0.5, help="BasicAttack difficulty 0.0/0.5/1.0")
     ap.add_argument("--ai-log", action="store_true", help="(non-functional: ArtificialIntelligence_LogAITree stalls the game even when armed at boot)")
-    ap.add_argument("--target-motion", default="none", choices=["none", "impulse", "yaw", "warp"])
+    ap.add_argument("--target-motion", default="none", choices=["none", "impulse", "yaw", "warp", "warpset", "cinematic", "settarget"])
+    ap.add_argument("--sample", default="attacker", choices=["attacker", "target"], help="which ship row c follows")
+    ap.add_argument("--warp-patch", default="none", help="comma list of WarpSequence player-branch camera steps to no-op")
+    ap.add_argument("--view", default="bridge", choices=["bridge", "tactical"], help="the player's view once the sim runs")
     ap.add_argument("--target-fire", action="store_true", help="player ship shoots back at act time")
     ap.add_argument("--warp-stop-gu", type=float, default=50.0)
     ap.add_argument("--warp-time", type=float, default=5.0)
@@ -341,7 +362,7 @@ def main(argv=None) -> int:
     ap.add_argument("--shield-face", type=int, default=-1, help="preset this face (0-5) to --shield-frac of max")
     ap.add_argument("--shield-frac", type=float, default=1.0)
     ap.add_argument("--shields-off", action="store_true", help="zero every face at act time")
-    ap.add_argument("--rows", default="abc", help="row kinds to sample: a weapon, b subsystems, c motion")
+    ap.add_argument("--rows", default="abc", help="row kinds to sample: a weapon, b subsystems, c motion, d player camera")
     ap.add_argument("--intensity", type=int, default=2, help="0=LOW 1=MED 2=HIGH")
     ap.add_argument("--charge", type=float, default=-1.0, help="-1 = leave at max")
     ap.add_argument("--power-wanted", type=float, default=-1.0)
@@ -368,7 +389,7 @@ def main(argv=None) -> int:
         "time_scale": a.time_scale, "target_alert": a.target_alert, "tractor_mode": a.tractor_mode,
         "shield_power": a.shield_power, "gen_frac": a.gen_frac,
         "ai": 1 if a.ai else 0, "ai_level": a.ai_level, "ai_log": 1 if a.ai_log else 0,
-        "target_motion": a.target_motion, "target_fire": 1 if a.target_fire else 0,
+        "target_motion": a.target_motion, "target_fire": 1 if a.target_fire else 0, "sample": a.sample, "view": a.view, "warp_patch": a.warp_patch,
         "warp_stop_gu": a.warp_stop_gu, "warp_time": a.warp_time, "warp_dest": a.warp_dest, "warp_clear": a.warp_clear,
     }
     result = run(a.oracle_dir, params, a.timeout, a.shot, a.shot_at)
