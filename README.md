@@ -63,11 +63,17 @@ run. Nothing in the stock script tree is modified.
    contains our `Oracle*` sections; the driver scrubs them before each launch.
 6. The QuickBattle AI ship's phaser system defaults to **PP_MEDIUM**; the
    mission sets the requested level explicitly at act time.
+7. **A set-to-set warp streak collides.** The ship really moves at 700 GU/s
+   along its heading for ~2 s before the set switch, and the harness parks
+   the target at the origin, dead ahead: the first `warpset_*` capture hit
+   it and arrived spinning at 10 rad/s, which masqueraded as a post-warp
+   speed law for a session. `warp_clear=<GU>` moves the target aside first.
+   Sample angular velocity whenever a speed looks wrong.
 
 ## Inputs (`oracle_in.cfg [OracleIn]`, all set by the driver)
 
 `attacker`, `target` (ship script names from `scripts/ships/`), `weapon`
-(`phaser|pulse|torpedo|none`), `motion` (`none|impulse|coast|yaw|pitch|roll`),
+(`phaser|pulse|torpedo|none`), `motion` (`none|impulse|impulseNNN|coast|yaw|pitch|roll|warp*|warpset*`),
 `range_gu`, `angle_deg` (0 ahead of the target, 90 off its starboard side,
 180 astern), `elev_deg`, `intensity` (0/1/2 = LOW/MED/HIGH), `charge`,
 `power_wanted`, `shield_face`/`shield_frac`, `shields_off`, `settle_s`,
