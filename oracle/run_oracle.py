@@ -174,6 +174,8 @@ def parse_row(line: str) -> dict:
             d[k] = int(v)
         elif k in ("shm",):
             d[k] = _floats(v)
+        elif k == "r":
+            d[k] = float(v)
     return d
 
 
@@ -188,7 +190,7 @@ def parse_output(oracle_dir: Path) -> dict:
         sec = parse_cfg_section(path, "OracleOut")
         keys = sorted(k for k in sec if k.startswith("r") and k[1:].isdigit())
         raw_rows.extend(sec[k] for k in keys if sec[k] != "")
-    rows = {"a": [], "b": [], "c": [], "d": [], "e": [], "s": [], "h": [], "m": []}
+    rows = {"a": [], "b": [], "c": [], "d": [], "e": [], "s": [], "h": [], "m": [], "f": []}
     for line in raw_rows:
         d = parse_row(line)
         rows.setdefault(d["kind"], []).append(d)
@@ -196,7 +198,7 @@ def parse_output(oracle_dir: Path) -> dict:
     boot = parse_cfg_section(oracle_dir / BOOT_CFG, "OracleBoot")
     hook = parse_cfg_section(oracle_dir / BOOT_CFG, "OracleHook")
     return {"meta": meta, "rows": rows["a"], "sub_rows": rows["b"], "motion_rows": rows["c"], "camera_rows": rows["d"], "active_camera_rows": rows["e"],
-            "scene_rows": rows["s"], "scene_health_rows": rows["h"], "scene_meta_rows": rows["m"],
+            "torpedo_rows": rows["f"], "scene_rows": rows["s"], "scene_health_rows": rows["h"], "scene_meta_rows": rows["m"],
             "subsystems": [{"name": x[0], "max": float(x[1]) if len(x) > 1 and x[1] != "err" else None,
                             "radius": float(x[2]) if len(x) > 2 else None,
                             "pos": _floats(x[3]) if len(x) > 3 else None} for x in subs],

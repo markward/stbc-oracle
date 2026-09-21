@@ -95,7 +95,9 @@ run. Nothing in the stock script tree is modified.
 (`a` weapon/shields/hull, `b` subsystem conditions, `c` motion of the
 `sample` ship, `d` player camera, `e` the rendered set's active camera);
 `cam_mode` steps the player camera through modes every `cam_step_s`
-(`space:<Mode>`, `cin:<Mode>`, `vs:<Dir>`, `settarget`, `fire`, `cinoff`).
+(`space:<Mode>`, `cin:<Mode>`, `vs:<Dir>`, `map`, `placement`, `lockedsph`,
+`lockednormal`, `firstperson`, `pop`, `settarget`, `fire`/`stopfire`, `cinoff`);
+row `f` is the first torpedo in the sample ship's set.
 
 ## Outputs
 

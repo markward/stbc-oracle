@@ -135,9 +135,11 @@ MATRIX: dict[str, dict] = {
     "cam_galaxy_cin_modes":   dict(weapon="none", sample="target", rows="cd", range_gu=300.0, duration=44.0, fire_at=10.0, view="tactical",
                                    cam_mode="cin:Chase,cin:FreeOrbit,cin:CinematicReverseTarget,settarget,cin:WideTarget,cin:DropAndWatch,cinoff"),
     "cam_galaxy_torpcam":     dict(weapon="none", sample="target", rows="cd", range_gu=150.0, duration=30.0, fire_at=10.0, view="tactical",
-                                   disable_target_weapons=0, cam_mode="cin:TorpCam,fire", cam_step_s=2.0),
+                                   disable_target_weapons=0, cam_mode="cin:TorpCam,fire,stopfire", cam_step_s=0.5),
     "cam_galaxy_viewscreen":  dict(weapon="none", sample="target", rows="cd", range_gu=300.0, duration=40.0, fire_at=10.0, view="tactical",
                                    cam_mode="vs:Forward,vs:Left,vs:Right,vs:Back,vs:Up,vs:Down,settarget,vs:ZoomTarget"),
+    "cam_galaxy_script_modes": dict(weapon="none", sample="target", rows="cd", range_gu=300.0, duration=40.0, fire_at=10.0, view="tactical",
+                                    cam_mode="map,space_again,lockedsph,lockednormal,firstperson,placement,pop"),
     "cam_galaxy_cinematic":    dict(weapon="none", target_motion="cinematic", sample="target", rows="cd", range_gu=300.0, duration=20.0, fire_at=10.0),
     # Scene audit of stock campaign missions (random.seed(20260921).sample of
     # the 26 shipped missions, 10, plus E1M1): every ship in the player's set, every 5 s

@@ -526,7 +526,7 @@ cadences). File = the capture whose raw rows are the reference.
 | N1 | a freshly loaded campaign mission has the player ship parked at the scripted placement (speed 0, green alert, full hull/shields, no target) and it stays parked for 90 s without input | exact | `scene_*` (11 missions) |
 | N2 | every non-player object spawns at red alert (E1M1's dock scene: green) with full hull and shields; ambient traffic runs `AvoidObstacles` at 4.0 GU/s; nothing is hidden, cloaked or dying at t = 0 | exact / ±2 % | `scene_*` |
 | N3 | per-mission cast, placements and 90 s autonomous evolution as tabulated in §13 / `docs/mission-scenes.md` (E2M6 fight, E3M2 Warbird warps out by 30 s, E4M5 Enterprise arrives at 46 s) | ±5 GU, ±5 s | `scene_E2M6`, `scene_E3M2`, `scene_E4M5` |
-| V6 | camera-mode stations scale with the watched object's `GetRadius()`: Chase/ReverseChase 4.0 R astern/ahead + 0.1 R up, Target 3.97 R + 0.48 R, ZoomTarget 4.0 R_target short of the target, ViewscreenZoomTarget 8.0 R_target, CinematicReverseTarget 3.97 R_source beyond the source, WideTarget 31.6 R + 4.9 R; FreeOrbit absolute 75 GU; sweeps settle in 1.0 s; viewscreen directions at the model hardpoints (§12.1a) | ±2 % | `cam_galaxy_space_modes`, `cam_galaxy_cin_modes`, `cam_galaxy_viewscreen`, `cam_galaxy_torpcam` |
+| V6 | camera-mode stations scale with the watched object's `GetRadius()`: Chase/ReverseChase 4.0 R astern/ahead + 0.1 R up, Target 3.97 R + 0.48 R, ZoomTarget 4.0 R_target short of the target, ViewscreenZoomTarget 8.0 R_target, CinematicReverseTarget 3.97 R_source beyond the source, WideTarget 31.6 R + 4.9 R; absolute GU for FreeOrbit (75), Map (1000, 10 % up), TorpCam (4.00 behind the torpedo, Chase 2.0 s after it is gone), Placement / Locked (exact); FirstPerson at the hardpoint; sweeps settle in 1.0 s (TorpCam 2 s); viewscreen directions at the model hardpoints (§12.1a) | ±2 % | `cam_galaxy_space_modes`, `cam_galaxy_cin_modes`, `cam_galaxy_viewscreen`, `cam_galaxy_torpcam`, `cam_galaxy_script_modes` |
 | V5 | player warp camera choreography: pre-warp cutscene camera 30.8 GU astern within 0.2 s of `Play()`, stays put while the ship streaks away; bridge viewscreen from 2.0 s after the ship enters the warp set until 0.6 s before it leaves; destination cutscene camera 53 GU ahead of the placement, aimed at the arriving ship, live 0.6 s before the ship appears; external Chase view and control back 2.0 s after arrival | ±0.2 s, ±1 GU | `warpcam_galaxy` |
 
 ---
@@ -539,9 +539,6 @@ cadences). File = the capture whose raw rows are the reference.
   Kessok, BoP survived at 5.2 GU/s — no clean constant).
 * Mission scenes: 11 of 26 missions sampled (§13); the rest, and what the
   scenes do beyond 90 s / after the player acts, are not.
-* Camera: the nav-map `Map` mode, scripted `Placement`/`Locked`/`FirstPerson`
-  cutscene modes and TorpCam's torpedo-relative offset (the torpedo itself is
-  not sampled) remain; §12 covers every mode the player can select.
 * Shield regen vs a reactor that cannot supply the generator's
   `NormalPowerPerSecond` (only the generator's own power-wanted was varied).
 * AI: the Warbird AI crashes the game (Bird of Prey, also a cloaker, does
@@ -685,8 +682,9 @@ from the first sample (`bv=0 tv=1`) regardless of `ForceBridgeVisible`.
 0.1)`; the Galaxy's `GetRadius()` is **4.366** (meta `player_radius`), and
 4.0 × 4.366 = 17.46 = the measured 17.47, with the 0.1 giving the 1.74 rise.
 Every Chase/Target-family mode scales its distances by the **radius of the
-object it watches** (`cam_galaxy_{space_modes,cin_modes,viewscreen}`, the
-player targeting the Kessok Heavy, radius 6.174, 300 GU dead ahead):
+object it watches** (`cam_galaxy_{space_modes,cin_modes,viewscreen,script_modes,torpcam}`, the
+player targeting the Kessok Heavy, radius 6.174, 300 GU dead ahead;
+Map-class and scripted modes are in absolute GU):
 
 | mode (how the game reaches it) | station, measured | in radii | aimed at |
 |---|---|---|---|
@@ -699,7 +697,13 @@ player targeting the Kessok Heavy, radius 6.174, 300 GU dead ahead):
 | WideTarget (cinematic "Wide Target View") | 138.05 astern, 21.57 up | 31.6 R, 4.9 R (attributes 32 / 1.25) | player |
 | FreeOrbit (cinematic "Free Orbit View", a Map mode) | 74.63 astern, 7.46 up = **75.00 GU** | absolute: `Distance 75` | player, pitched −6° |
 | DropAndWatch (cinematic "Flyby View") | 15.15 GU on a fresh start, 18.6 and drifting 1.5 GU/s when entered from another mode | dynamic (`AnticipationTime 2.5`, `SideOffset 3`) | player |
-| TorpCam (cinematic "Torpedo View") | follows the player's torpedo: 140.65 ahead when a photon fired at a target 150 GU away expires; Chase again 2.0 s after the torpedo is gone (`DelayAfterTorpGone`) | `StartDistance 4 → LaterDistance 8` over 6 s | the torpedo |
+| TorpCam (cinematic "Torpedo View") | sweeps from the Chase station to **exactly 4.00 GU directly behind the torpedo** (on its line, ≤ 0.1 GU off) within 2.1 s of launch and holds 4.00 for the whole 7.6 s flight of a photon to a target 150 GU away; Chase again **2.0 s** after the torpedo is gone (`DelayAfterTorpGone`) | `StartDistance 4` **in GU** (not radii); `LaterDistance 8` never engaged | the torpedo (row `f`, `cam_galaxy_torpcam`, one torpedo) |
+| Map (nav map, `InvalidMap → Map`) | 995 astern, 99.5 up = **1000.00 GU**, snaps | absolute: `Distance 1000`, 10 % up | player |
+| Placement (scripted `Camera.Placement`) | exactly at the placement object, aimed at the target ship, snaps | absolute | target |
+| Locked spherical (`LockedSphericalLookCenter(45°, 30°, 40)`) | (24.5 ahead, 24.5 starboard, 20.0 up) = **40.00 GU**, i.e. cos 30·cos 45, cos 30·sin 45, sin 30 × distance in the ship frame, aimed at the ship's centre; snaps | absolute | ship centre |
+| Locked normal (`LockedNormal(pos, fwd, up)`) | exactly at the model-space point (model +Y = ahead, +X = starboard), facing the given model-space direction; snaps | absolute | as given |
+| FirstPerson (scripted) | the ship's `FirstPersonCamera` hardpoint — Galaxy 3.30 ahead, 0.31 up — looking forward; snaps | hardpoint | forward |
+| `Camera.Pop()` | leaves the camera where it is with no mode | — | — |
 
 Every switch settles in **exactly 1.0 s** (`SweepTime 1.0`; the first sample
 at the final station is 1.00–1.06 s after the key), except ZoomTarget's

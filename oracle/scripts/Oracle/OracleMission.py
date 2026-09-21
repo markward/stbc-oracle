@@ -680,6 +680,9 @@ def _cam_step(step):
     elif kind == "fire":
         g_pTarget.SetTarget(g_pAttacker.GetName())
         g_pTarget.GetTorpedoSystem().StartFiring(g_pAttacker)
+    elif kind == "stopfire":
+        # with cam_step_s 0.5 after "fire": one torpedo (tubes are 0.656 s apart)
+        g_pTarget.GetTorpedoSystem().StopFiring()
     elif kind == "cinoff":
         App.TGScriptAction_Create("Actions.CameraScriptActions", "StopCinematicMode").Play()
     elif kind == "space":
@@ -704,6 +707,39 @@ def _cam_step(step):
         import Camera
         Camera.PlayerCameraAsViewscreen()
         pCam.AddModeHierarchy("InvalidViewscreen", "Viewscreen" + arg)
+    elif kind == "map":
+        # the nav map view: InvalidMap -> Map (Target = player)
+        import Camera
+        Camera.PlayerCameraAsMap()
+    elif kind == "space_again":
+        import Camera
+        Camera.PlayerCameraAsSpace()
+    elif kind == "placement":
+        # scripted cutscene: a PlacementObject 40 GU off the port bow, 10 up, watching the player
+        import Camera
+        pSet = g_pTarget.GetContainingSet()
+        if App.PlacementObject_GetObject(pSet, "OraclePlacement") is None:
+            pPl = App.PlacementObject_Create("OraclePlacement", pSet.GetName(), None)
+            kL = g_pTarget.GetWorldLocation()
+            pPl.SetTranslateXYZ(kL.x + 30.0, kL.y - 30.0, kL.z + 10.0)
+            pPl.UpdateNodeOnly()
+        Camera.Placement("OraclePlacement", g_pTarget.GetName(), pSet.GetName())
+    elif kind == "lockedsph":
+        # LockedSphericalLookCenter(target, degrees around, degrees height, distance)
+        import Camera
+        Camera.LockedSphericalLookCenter(g_pTarget.GetName(), 45.0, 30.0, 40.0)
+    elif kind == "lockednormal":
+        import Camera
+        vP = App.TGPoint3(); vP.SetXYZ(10.0, 20.0, 5.0)       # model space: +Y is model forward
+        vF = App.TGPoint3(); vF.SetXYZ(0.0, -1.0, 0.0)
+        vU = App.TGPoint3(); vU.SetXYZ(0.0, 0.0, 1.0)
+        Camera.LockedNormal(g_pTarget.GetName(), vP, vF, vU)
+    elif kind == "firstperson":
+        import Camera
+        Camera.FirstPerson(g_pTarget.GetName())
+    elif kind == "pop":
+        import Camera
+        Camera.Pop()
     else:
         _log.mark("cam_step_unknown", step)
 
@@ -874,6 +910,33 @@ def _camera_row(t):
         _log.row(line)
         global g_last_row
         g_last_row = line[:110]
+        # Row f: torpedoes in the sample ship's set (TorpCam geometry)
+        try:
+            pSetT = g_pTarget.GetContainingSet()
+            if pSetT is not None:
+                torps = pSetT.GetClassObjectList(App.CT_TORPEDO)
+                if torps:
+                    pT0 = torps[0]
+                    line = "f t=%.4f n=%d" % (t, len(torps))
+                    try:
+                        line = line + " p=%s" % _p3(pT0.GetWorldLocation())
+                        line = line + " fw=%s" % _p3(pT0.GetWorldForwardTG())
+                    except:
+                        line = line + " perr=%s" % string.replace(_log.exc(), " ", "_")[:40]
+                    try:
+                        vT = pT0.GetVelocityTG()
+                        line = line + " sp=%.3f" % ((vT.x * vT.x + vT.y * vT.y + vT.z * vT.z) ** 0.5)
+                    except:
+                        pass
+                    try:
+                        line = line + " r=%.3f" % pT0.GetRadius()
+                    except:
+                        pass
+                    _log.row(line)
+        except:
+            if not g_cam_err:
+                g_cam_err = 1
+                _log.mark("torp_row_error", _log.exc())
         # Row e: the rendered set's ACTIVE camera -- what is actually on screen
         # (cutscene cameras are separate objects made active in the set).
         try:
