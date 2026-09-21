@@ -519,6 +519,10 @@ cadences). File = the capture whose raw rows are the reference.
 | P4 | bolt = script damage × emitter DamageScale; power setting changes shot cost 0.5/1/2, not damage | exact | `pulse_warbird_front_40_{meta,low,high}` |
 | S6 | shield generator below DisabledPercentage ⇒ all faces 0, no regen | exact | `regen_gen{50,20}_face50` |
 | S7 | port is face 4 | exact | `phaser_high_port_57` |
+| V1 | player camera frustum: right 0.250, top 0.1875 at near 1.0 (28.1° × 21.2°, 4:3), far 5000 | exact | `cam_galaxy_tactical` (meta `player_camera`) |
+| V2 | Chase (external view, no target): camera 17.38 GU astern and 1.74 GU above the ship origin, aimed at the origin; at steady speed it trails a further 0.26–0.29 s × speed (19.18 at 6.30 GU/s); in a 0.28 rad/s turn it swings 5.45 GU to the outside | ±0.1 GU at rest, ±5 % moving | `cam_galaxy_tactical`, `cam_galaxy_chase_impulse`, `cam_galaxy_chase_yaw` |
+| V3 | Target mode (player has a target): same station as Chase, 0.35 GU higher (17.34 astern, 2.09 up), reached in 1 s | ±0.1 GU | `cam_galaxy_target` |
+| V4 | cinematic mode on a parked ship: DropAndWatch at exactly 15.15 GU from the ship, aimed at it, drifting around it | ±0.1 GU | `cam_galaxy_cinematic` |
 | V5 | player warp camera choreography: pre-warp cutscene camera 30.8 GU astern within 0.2 s of `Play()`, stays put while the ship streaks away; bridge viewscreen from 2.0 s after the ship enters the warp set until 0.6 s before it leaves; destination cutscene camera 53 GU ahead of the placement, aimed at the arriving ship, live 0.6 s before the ship appears; external Chase view and control back 2.0 s after arrival | ±0.2 s, ±1 GU | `warpcam_galaxy` |
 
 ---
@@ -636,6 +640,37 @@ Harness facts: the Quick Battle intro cutscene (XO exposition) owns the
 view until **t ≈ 7.3 s** after the first sample — camera scenarios act at
 `fire_at` 10. In the oracle the game is in the external (tactical) view
 from the first sample (`bv=0 tv=1`) regardless of `ForceBridgeVisible`.
+
+### 12.1 Player camera, external view (`cam_galaxy_*`)
+
+* **Frustum** (`GetNiFrustum`): right 0.250, top 0.1875 at near 1.0 →
+  horizontal FOV 2·atan(0.25) = **28.1°**, vertical **21.2°** (4:3), far
+  5000 GU (meta `player_camera`, every capture).
+* **Chase** (no target selected; Galaxy at rest): camera at **17.38 GU
+  astern, 1.74 GU above** the ship origin, exactly on the ship's centre
+  line, aimed at the origin (pitched down 4°). The station is fixed in the
+  ship's frame — it rotates with the heading.
+* **Chase while moving** (`cam_galaxy_chase_impulse`, 0 → 6.3 GU/s): the
+  camera trails farther the faster the ship goes — 17.47 at 0.47 GU/s,
+  17.89 at 1.12, 18.93 at 3.47, **19.18 at 6.30** — i.e. an extra
+  0.26–0.29 s × speed (0.78 GU at 3.04, 1.80 at 6.30), settled within
+  ~0.5 s of the speed settling. Height stays 1.74.
+* **Chase while turning** (`cam_galaxy_chase_yaw`, 0.28 rad/s at 3.04
+  GU/s): the camera swings to the **outside of the turn by 5.45 GU** (an
+  angular lag of 16.7° = 0.29 rad ≈ 1.0 s × ω) while still 18.16 astern
+  and aimed at the ship; the swing builds over ~4 s with the turn rate.
+* **Target mode** (`cam_galaxy_target`, player targets the Kessok 300 GU
+  dead ahead): the hierarchy `InvalidSpace → Target → Chase` switches the
+  mode the instant a target exists; the station is Chase's, lifted to
+  **2.09 GU up** (17.34 astern) over 1.0 s so both ships are framed. With
+  the target elsewhere than dead ahead the framing will differ — not
+  measured.
+* **Cinematic mode** (`cam_galaxy_cinematic`, `StartCinematicMode(0)` on a
+  parked ship): the cinematic window puts the player camera into
+  `DropAndWatch` (`InvalidCinematic → DropAndWatch`): **15.15 GU from the
+  ship**, aimed at it, starting above and to port (8.2, −2.3, +12.5 in
+  world axes) and drifting round the ship at an accelerating rate (63° in
+  9 s). Tactical view is hidden (`tv=0`) and input is off.
 
 ### 12.2 What the viewer sees during a player set-to-set warp (`warpcam_galaxy`)
 
