@@ -527,6 +527,7 @@ cadences). File = the capture whose raw rows are the reference.
 | N2 | every non-player object spawns at red alert (E1M1's dock scene: green) with full hull and shields; ambient traffic runs `AvoidObstacles` at 4.0 GU/s; nothing is hidden, cloaked or dying at t = 0 | exact / ±2 % | `scene_*` |
 | N3 | per-mission cast, placements and 90 s autonomous evolution as tabulated in §13 / `docs/mission-scenes.md` (E2M6 fight, E3M2 Warbird warps out by 30 s, E4M5 Enterprise arrives at 46 s) | ±5 GU, ±5 s | `scene_E2M6`, `scene_E3M2`, `scene_E4M5` |
 | V6 | camera-mode stations scale with the watched object's `GetRadius()`: Chase/ReverseChase 4.0 R astern/ahead + 0.1 R up, Target 3.97 R + 0.48 R, ZoomTarget 4.0 R_target short of the target, ViewscreenZoomTarget 8.0 R_target, CinematicReverseTarget 3.97 R_source beyond the source, WideTarget 31.6 R + 4.9 R; absolute GU for FreeOrbit (75), Map (1000, 10 % up), TorpCam (4.00 behind the torpedo, Chase 2.0 s after it is gone), Placement / Locked (exact); FirstPerson at the hardpoint; sweeps settle in 1.0 s (TorpCam 2 s); viewscreen directions at the model hardpoints (§12.1a) | ±2 % | `cam_galaxy_space_modes`, `cam_galaxy_cin_modes`, `cam_galaxy_viewscreen`, `cam_galaxy_torpcam`, `cam_galaxy_script_modes` |
+| X4 | tractor beam: `TractorBeamWidth` scales the beam width linearly (9 → 36 px for 0.3 → 1.2), `MainRadius` and the texture rows do nothing, runtime colour patches do nothing (colour fixed at creation, 95,63,211 on screen for the stock 0.4/0.4/1.0) | ±15 % | `docs/results/vfx/tr_*` |
 | X3 | `CreateDisruptorModel(shell, core, length, width)`: length 1.8 → 6.0 makes the bolt 4× longer at the same width (aspect 12:1 stock), width 0.15 → 0.6 makes it 6× wider, the two colours recolour it; `GetRadius` = length / 2 | ±15 % | `docs/results/vfx/pb_*` |
 | X2 | beam levers read at fire time: `MainRadius` scales the beam width linearly (9 → 44 px for 0.15 → 0.6), `CoreScale` the bright core (9 → 15 px), the four colour slots set the beam colour, `NumSides` is real geometry, the texture row band changes nothing visible; taper is at the emitter end | ±15 % on widths | `docs/results/vfx/ph_*` |
 | X1 | `CreateTorpedoModel` argument semantics (core scale, flare rotation/count/length/lifespan, glow base size / pulse rate / pulse amplitude) as tabulated in §14.2; projectile `GetRadius()` = sprite bound (photon 0.770) | ±5 % on radii | `docs/results/vfx/*` |
@@ -835,7 +836,8 @@ freeze-detector budget is the mission `duration` + 23 s; and the driver's
 Read from the SDK scripts (`ships/Hardpoints/*.py`, `Tactical/Projectiles/*.py`,
 `Effects.py`, `LoadTacticalSounds.py`, `Tactical/EffectTextures.py`) and the
 asset files in the game copy; the unnamed model-builder arguments (§14.2,
-§14.3) and the beam levers (§14.1) were then verified on the exe. The renderers
+§14.3), the beam levers and the tractor (§14.1) were then verified on the
+exe. The renderers
 themselves are engine code — the scripts only choose assets and set the
 levers below, so a remake reproduces the *parameters*, not a script.
 
@@ -887,6 +889,22 @@ animate, and one flat blue-violet colour for all four colour slots.
 `data/Textures/Tactical/PhaserLights.tga` (32 × 32 radial white sprite,
 centre α 251 → edge 15) is the only other beam asset in the folder; it is
 not referenced from any script, so it is the engine's emitter glow.
+
+**Tractor verified on the exe** (`docs/results/vfx/tr_*.png`, `vfx_tr_*.json`;
+the Galaxy's four `TractorBeamProperty` objects patched at runtime with
+`tractorpatch`, tractor held on the Kessok at 40 GU, chase view, same row
+scan as the phaser):
+
+| lever changed | stock frame | changed frame | reading |
+|---|---|---|---|
+| `TractorBeamWidth` 0.3 → 1.2 | 9 px | **36 px** | the tractor's width lever, linear (`tr_width_00.png`) |
+| `MainRadius` (default) → 0.6 | 9 px | 7 px | **no effect** on a tractor — unlike a phaser (`tr_radius_00.png`) |
+| four colour slots → 255,0,0 | centre RGB 95,63,211 | 95,63,211, beam still blue-violet | the runtime colour is **fixed at creation** — the hardpoint's values are the only lever; phasers, by contrast, take a colour patch at fire time (`tr_red_02.png`) |
+| `TextureStart/End` 32 → 0–7 | 9 px, same colour | unchanged | as for phasers, the rows change nothing visible (`tr_rows_00.png`) |
+
+So the tractor shares the tube renderer but is sized by
+`TractorBeamWidth`, not `MainRadius`, and is coloured once when the ship is
+built. The `PhaserLights.tga` emitter glow was not isolated.
 
 **Verified on the exe** (`docs/results/vfx/ph_*.png`, `vfx_ph_*.json`): the
 player's eight `PhaserProperty` objects were patched at runtime

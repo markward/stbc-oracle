@@ -784,6 +784,31 @@ def _cam_step(step):
                 getattr(prop, "Set" + attr)(val)
             n = n + 1
         _log.mark("phaserpatch", "%s on %d banks" % (arg, n))
+    elif kind == "tractorpatch":
+        n = 0
+        ts = g_pTarget.GetTractorBeamSystem()
+        for i in range(ts.GetNumChildSubsystems()):
+            b = App.TractorBeamProjector_Cast(ts.GetChildSubsystem(i))
+            if b is None:
+                continue
+            prop = App.TractorBeamProperty_Cast(b.GetProperty())
+            if prop is None:
+                continue
+            for item in string.split(arg, ";"):
+                j = string.find(item, "=")
+                val = _vfx_value(item[j + 1:])
+                if type(val) == type(()):
+                    val = _color(val)
+                getattr(prop, "Set" + item[:j])(val)
+            n = n + 1
+        _log.mark("tractorpatch", "%s on %d projectors" % (arg, n))
+    elif kind == "firetractor":
+        ts = g_pTarget.GetTractorBeamSystem()
+        ts.SetMode(App.TractorBeamSystem.TBS_HOLD)
+        g_pTarget.SetTarget(g_pAttacker.GetName())
+        ts.StartFiring(g_pAttacker)
+    elif kind == "stoptractor":
+        g_pTarget.GetTractorBeamSystem().StopFiring()
     elif kind == "firephaser":
         g_pTarget.SetTarget(g_pAttacker.GetName())
         g_pTarget.GetPhaserSystem().StartFiring(g_pAttacker)
