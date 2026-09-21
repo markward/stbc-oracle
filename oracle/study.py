@@ -21,7 +21,7 @@ BASE = dict(attacker="KessokHeavy", target="Galaxy", weapon="phaser", motion="no
             power_wanted=-1.0, shield_face=-1, shield_frac=1.0, shields_off=0,
             settle_s=2.0, fire_at=1.0, duration=12.0, sample_dt=0.03,
             disable_target_weapons=1, rows="ab", torp_type=-1, pulse_power=-1,
-            time_scale=1.0, target_alert="red", tractor_mode="hold", shield_power=-1.0, gen_frac=-1.0, ai=0, ai_level=0.5, ai_log=0, target_motion="none", target_fire=0, warp_stop_gu=50.0, warp_time=5.0, warp_dest="Systems.Vesuvi.Vesuvi5")
+            time_scale=1.0, target_alert="red", tractor_mode="hold", shield_power=-1.0, gen_frac=-1.0, ai=0, ai_level=0.5, ai_log=0, target_motion="none", target_fire=0, warp_stop_gu=50.0, warp_time=5.0, warp_dest="Systems.Vesuvi.Vesuvi5", warp_clear=0.0)
 
 MATRIX: dict[str, dict] = {
     # --- phasers: intensity table -------------------------------------------
@@ -102,6 +102,8 @@ MATRIX: dict[str, dict] = {
     "tractor_galaxy_galaxy_hold": dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="hold", rows="abc", range_gu=15.0, duration=30.0),
     "tractor_galaxy_galaxy_tow":  dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="tow", rows="abc", range_gu=15.0, duration=30.0),
     "tractor_galaxy_galaxy_push": dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="push", rows="abc", range_gu=15.0, duration=30.0),
+    "motion_kessok_impulse020": dict(weapon="none", motion="impulse020", rows="c", range_gu=300.0, duration=20.0),
+    "motion_kessok_impulse050": dict(weapon="none", motion="impulse050", rows="c", range_gu=300.0, duration=20.0),
     "motion_kessok_impulse125": dict(weapon="none", motion="impulse125", rows="c", range_gu=300.0, duration=20.0),
     "motion_kessok_impulse200": dict(weapon="none", motion="impulse200", rows="c", range_gu=300.0, duration=20.0),
     "motion_kessok_impulse_power125": dict(weapon="none", motion="impulse_power125", rows="c", range_gu=300.0, duration=20.0),
@@ -119,6 +121,9 @@ MATRIX: dict[str, dict] = {
     "warp_galaxy_rest_600":    dict(attacker="Galaxy", weapon="none", motion="warp", rows="c", range_gu=600.0, duration=30.0),
     "warp_kessok_rest_2000":   dict(weapon="none", motion="warp", rows="c", range_gu=2000.0, duration=40.0),
     "warpset_kessok_rest":   dict(weapon="none", motion="warpset", rows="c", range_gu=300.0, duration=30.0),
+    "warpset_kessok_rest_clear": dict(weapon="none", motion="warpset", rows="c", range_gu=300.0, duration=30.0, warp_clear=200.0),
+    "warpset_kessok_recmd":  dict(weapon="none", motion="warpset_recmd", rows="c", range_gu=300.0, duration=30.0),
+    "motion_kessok_impulse020_warpon": dict(weapon="none", motion="impulse020_warpon", rows="c", range_gu=300.0, duration=20.0),
     "tractor_galaxy_galaxy_pull": dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="pull", rows="abc", range_gu=15.0, duration=30.0),
 }
 

@@ -362,23 +362,42 @@ and the helm's in-system warp:
 
 **Set-to-set warp** (`WarpSequence_Create(ship, "Systems.Vesuvi.Vesuvi5",
 5.0, "Player Start").Play()`, the AI `Warp.py` recipe: warp/impulse power
-on, speed and turn zeroed first; `warpset_kessok_rest`, Kessok Heavy from
-the Quick Battle region into Vesuvi5) is a scripted five-phase sequence,
-not physics:
+on, speed and turn zeroed first; `warpset_kessok_rest_clear`, Kessok Heavy
+from the Quick Battle region into Vesuvi5 with the Galaxy parked 200 GU off
+the streak line) is a scripted five-phase sequence, not physics:
 
 | phase | duration | what the samples show |
 |---|---|---|
 | 1. entry delay | **1.0 s** after `Play()` | parked, speed 0 (the script's `fEntryDelayTime`) |
-| 2. streak in the origin set | **~2.25 s** | `GetVelocity` reports **700 GU/s**; position leaves along the heading, then is shuffled around the origin — the ship is being moved by the sequence, out of sight |
+| 2. streak in the origin set | **~2.25 s** | `GetVelocity` reports **700 GU/s** and the position really does move along the heading at that rate (−300 → +400 on the axis in 1 s) — and it **collides with anything in the way** (see below) |
 | 3. the "warp" set | **exactly `warp_time`** (5.0 s) | ship parked at the origin of a set named `warp`, speed 0 |
 | 4. dewarp in the destination | **~1.9 s** | appears ~640 GU from the placement and is *moved* to it (~340 GU/s) with `GetVelocity` = 0 — scripted motion, not velocity |
-| 5. arrival | — | at the placement (`Player Start`), speed 0; the script then commands `SetImpulse(0.2)` and the ship approaches **0.370 GU/s = 0.1 × MaxSpeed** under the 1 s law (0.25 at +1 s, 0.34 at +2.4 s) |
+| 5. arrival | — | at the placement (`Player Start`), facing the placement's heading, speed 0, no rotation; the script then commands `SetImpulse(0.2)` and the ship approaches **0.740 GU/s = 0.2 × MaxSpeed** under the ordinary 1 s law (0.49 at +1 s, 0.71 at +3 s, 0.740 from +6 s) |
 
 Total 11.5 s for a 5 s warp. Contract for a remake: after a set-to-set warp
-the ship is **at the placement, at rest, then creeping at ~0.1 × MaxSpeed**
+the ship is **at the placement, at rest, then creeping at 0.2 × MaxSpeed**
 — it does not arrive with its pre-warp velocity (the sequence zeroes it
 before entry) and it does not arrive at `MaxSpeed` as an in-system warp
-does. Two harness notes: the destination must be given as the **system
+does. `SetImpulse(f)` is linear in `f` below 1.0 as well: 0.2 → 0.740,
+0.5 → 1.850 on the Kessok (`motion_kessok_impulse{020,050}`), and the
+commanded fraction is readable back with `GetImpulse()`.
+
+**The warp streak is a real, colliding move.** The earlier capture
+`warpset_kessok_rest` had the Galaxy at the set origin, on the streak
+line: at t = 2.94 s the Kessok's position crosses the origin at 700 GU/s,
+speed dips to 429 for one sample and the ship comes out with an angular
+velocity of **10.4 rad/s** that never decays (8.9 rad/s 27 s later —
+nothing damps a free spin). The spin persists through the "warp" set and
+into Vesuvi5, and with the heading turning that fast the 1 s velocity
+controller only keeps the component along the spin axis: the 0.2 coast
+settled at 0.370 (half) and a re-commanded `SetImpulse(1.0)` at only 1.278
+(`warpset_kessok_recmd`), with `GetImpulse()` = 1.0 and impulse power = 1.0
+throughout. The engine and impulse laws were never involved. Moving the
+target 200 GU aside (`warp_clear=200`, `warpset_kessok_rest_clear`) gives
+zero angular velocity and the 0.740 above. A remake therefore must keep
+collision on during the outbound streak (an AI that warps out with its
+impulse engines disabled turns collisions off explicitly, `AI/PlainAI/Warp.py`),
+and a harness must never put anything on the warp line. Two harness notes: the destination must be given as the **system
 module name**, not the set name (the script strips to the set after the
 last dot and loads the system itself); and a warp with no destination
 (`WarpSequence_Create(ship, None, t)`, the AI "bail out" form) removes the
@@ -484,7 +503,8 @@ cadences). File = the capture whose raw rows are the reference.
 | T4 | quantum 900, Klingon 1400; ammo switch unloads tubes (Sovereign reload 40 s) | exact | `torpedo_sovereign_quantum_57`, `torpedo_warbird_front_57` |
 | S5 | regen rate identical at red/yellow/green alert | ±5 % | `regen_*_face50` |
 | W1 | in-system warp: step to 75.0 GU/s, duration = distance/75, exit at MaxSpeed regardless of entry speed, drop-out at the requested stop distance | exact / ±10 GU | `warp_*` |
-| W2 | set-to-set warp: 1.0 s entry delay, ~2.25 s at 700 GU/s in the origin set, `warp_time` in the warp set, ~1.9 s scripted dewarp to the placement, arrive at rest then creep to 0.1 × MaxSpeed | ±0.2 s per phase | `warpset_kessok_rest` |
+| W2 | set-to-set warp: 1.0 s entry delay, ~2.25 s at 700 GU/s in the origin set, `warp_time` in the warp set, ~1.9 s scripted dewarp to the placement, arrive at rest and unrotated then creep to 0.2 × MaxSpeed (`SetImpulse(0.2)`) | ±0.2 s per phase; speed ±2 % | `warpset_kessok_rest_clear`, `motion_kessok_impulse020` |
+| W3 | the outbound warp streak collides: a ship on the streak line is hit at 700 GU/s and the warping ship arrives spinning at ~10 rad/s, undamped | qualitative | `warpset_kessok_rest`, `warpset_kessok_recmd` |
 | C1 | collision is elastic with hardpoint masses (post-impact speeds) | ±3 % | `ram_*` |
 | C2 | rammed-ship damage = 8.2 × 2μv; shields untouched | ±10 % | `ram_*` |
 | P4 | bolt = script damage × emitter DamageScale; power setting changes shot cost 0.5/1/2, not damage | exact | `pulse_warbird_front_40_{meta,low,high}` |
@@ -499,8 +519,10 @@ cadences). File = the capture whose raw rows are the reference.
   GU/s in every mode).
 * Collision damage split per hull pairing (BoP → Kessok: 1417 to the
   Kessok, BoP survived at 5.2 GU/s — no clean constant).
-* Why the post-warp creep settles at 0.1 × MaxSpeed when the script asks
-  for `SetImpulse(0.2)` (engine power state after warp?).
+* Camera: what the warp sequence does with the camera (`WarpSequence.py`
+  drives it explicitly — `BridgeCameraForward`, `FixCamera`, cinematic
+  mode dropped 2 s after dewarp), and camera placement/behaviour in
+  general (external view offsets, tracking, cutscene cameras).
 * Shield regen vs a reactor that cannot supply the generator's
   `NormalPowerPerSecond` (only the generator's own power-wanted was varied).
 * AI: the Warbird AI crashes the game (Bird of Prey, also a cloaker, does

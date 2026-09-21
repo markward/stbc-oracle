@@ -86,6 +86,7 @@ def _read_inputs():
     P["warp_stop_gu"] = _getf("warp_stop_gu", 50.0)     # InSystemWarp stop distance from the target
     P["warp_time"]    = _getf("warp_time", 5.0)         # WarpSequence duration for set-to-set
     P["warp_dest"]    = _gets("warp_dest", "Systems.Vesuvi.Vesuvi5")  # module name, or "none" = warp out
+    P["warp_clear"]   = _getf("warp_clear", 0.0)      # >0: before a set-to-set warp move the target this far off the streak line (+X)
     for k in P.keys():
         _log.meta("in_" + k, P[k])
 
@@ -455,15 +456,23 @@ def _act_weapon():
     g_pAttacker.SetTarget(g_pTarget.GetName())   # takes a NAME, not an object
     ps.StartFiring(g_pTarget)
 
+def _digits(s):
+    out = ""
+    for ch in s:
+        if ch in "0123456789":
+            out = out + ch
+    return out
+
 def _act_motion():
     m = P["motion"]
     fwd = App.TGPoint3_GetModelForward()
     if m == "impulse":
         g_pAttacker.SetImpulse(1.0, fwd, App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
-    elif m == "impulse125":
-        g_pAttacker.SetImpulse(1.25, fwd, App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
-    elif m == "impulse200":
-        g_pAttacker.SetImpulse(2.0, fwd, App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
+    elif m[:7] == "impulse" and m[7:] != "" and m[7:] == _digits(m[7:]):
+        # impulseNNN: SetImpulse(NNN / 100), e.g. impulse020, impulse125, impulse200
+        frac = float(m[7:]) / 100.0
+        _log.mark("impulse_frac", "%.3f" % frac)
+        g_pAttacker.SetImpulse(frac, fwd, App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
     elif m == "impulse_power125":
         try:
             g_pAttacker.GetImpulseEngineSubsystem().SetPowerPercentageWanted(1.25)
@@ -471,7 +480,18 @@ def _act_motion():
         except:
             _log.mark("impulse_power_error", _log.exc())
         g_pAttacker.SetImpulse(1.0, fwd, App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
-    elif m in ("warpset", "warpset_moving"):
+    elif m == "impulse020_warpon":
+        # warp engines powered and on (as before a warp), then the WarpSequence coast command verbatim
+        try:
+            pWarp = g_pAttacker.GetWarpEngineSubsystem()
+            if pWarp:
+                pWarp.SetPowerPercentageWanted(1.0)
+                pWarp.TurnOn()
+            g_pAttacker.SetSpeed(0, fwd, App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
+        except:
+            _log.mark("warpon_error", _log.exc())
+        g_pAttacker.SetImpulse(0.2, g_pAttacker.GetWorldForwardTG(), App.PhysicsObjectClass.DIRECTION_WORLD_SPACE)
+    elif m in ("warpset", "warpset_moving", "warpset_recmd"):
         # Set-to-set warp into Vesuvi5 (created on demand), the AI Warp.py way.
         # Run the import in QuickBattle's own namespace: from inside the
         # Oracle package the same string resolves package-relative under
@@ -561,6 +581,16 @@ ET_WARP_DONE = App.UtopiaModule_GetNextEventType()
 
 def OnWarpDone(pObject, pEvent):
     _log.mark("warpset_done", "t=%.3f" % (App.g_kUtopiaModule.GetGameTime() - g_t0))
+    if P["motion"] == "warpset_recmd":
+        # 8 s after arrival re-command full impulse: does the post-warp state halve the whole scale?
+        MissionLib.CreateTimer(ET_CUT, __name__ + ".OnRecmd", App.g_kUtopiaModule.GetGameTime() + 8.0, 0.0, 0.0)
+
+def OnRecmd(pObject, pEvent):
+    try:
+        g_pAttacker.SetImpulse(1.0, App.TGPoint3_GetModelForward(), App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
+        _log.mark("recmd", "t=%.3f speed=%.3f" % (App.g_kUtopiaModule.GetGameTime() - g_t0, _speed(g_pAttacker)))
+    except:
+        _log.mark("recmd_error", _log.exc())
 
 def OnWarpSet(pObject, pEvent):
     """AI/PlainAI/Warp.py's recipe, step by step with markers."""
@@ -573,6 +603,15 @@ def OnWarpSet(pObject, pEvent):
         if pImp:
             pImp.SetPowerPercentageWanted(1.0)
             pImp.TurnOn()
+        if P["warp_clear"] > 0.0:
+            # The 700 GU/s streak runs straight through the target at the origin
+            # (warpset_kessok_rest: 10 rad/s tumble from the collision); park it aside.
+            _place(g_pTarget, P["warp_clear"], 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0)
+            _still(g_pTarget)
+            pPM = g_pSet.GetProximityManager()
+            if pPM:
+                pPM.UpdateObject(g_pTarget)
+            _log.mark("warp_clear", "target at x=%.0f" % P["warp_clear"])
         g_pAttacker.SetSpeed(0, App.TGPoint3_GetModelForward(), App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
         vZero = App.TGPoint3(); vZero.SetXYZ(0.0, 0.0, 0.0)
         g_pAttacker.SetTargetAngularVelocityDirect(vZero)
@@ -679,6 +718,17 @@ def OnSample(pObject, pEvent):
                     extra = " rng=%.3f tgt=%s fire=%s" % (_range(), tn, fs or "-")
                 except:
                     extra = " rng=%.3f" % _range()
+            if not P["ai"]:
+                # impulse command fraction and the engine's actual power fraction
+                try:
+                    pImp = g_pAttacker.GetImpulseEngineSubsystem()
+                    if pImp is not None:
+                        extra = extra + " im=%.2f ip=%.2f" % (g_pAttacker.GetImpulse(), pImp.GetPowerPercentage())
+                    pWs = g_pAttacker.GetWarpEngineSubsystem()
+                    if pWs is not None:
+                        extra = extra + " ws=%d,%d" % (pWs.GetWarpState(), pWs.IsOn())
+                except:
+                    pass
             try:
                 extra = extra + " isw=%d" % int(g_pAttacker.IsDoingInSystemWarp())
                 pSetNow = g_pAttacker.GetContainingSet()
