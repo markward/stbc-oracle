@@ -567,6 +567,7 @@ cadences). File = the capture whose raw rows are the reference.
 | X3 | `CreateDisruptorModel(shell, core, length, width)`: length 1.8 → 6.0 makes the bolt 4× longer at the same width (aspect 12:1 stock), width 0.15 → 0.6 makes it 6× wider, the two colours recolour it; `GetRadius` = length / 2 | ±15 % | `docs/results/vfx/pb_*` |
 | X2 | beam levers read at fire time: `MainRadius` scales the beam width linearly (9 → 44 px for 0.15 → 0.6), `CoreScale` the bright core (9 → 15 px), the four colour slots set the beam colour, `NumSides` is real geometry, the texture row band changes nothing visible; taper is at the emitter end | ±15 % on widths | `docs/results/vfx/ph_*` |
 | X1 | `CreateTorpedoModel` argument semantics (core scale, flare rotation/count/length/lifespan, glow base size / pulse rate / pulse amplitude) as tabulated in §14.2; projectile `GetRadius()` = sprite bound (photon 0.770) | ±5 % on radii | `docs/results/vfx/*` |
+| V7 | a target's destruction: dying phase 7–12 s with the reticule and target lock kept on the exploding hulk; at removal the player's target clears and the reticule vanishes on the same sample; the Target camera stays in Target mode aimed at the wreck's last position indefinitely (≥ 34 s), as it would for a live target that does not move | ±1 sample | `camera_kill/*` |
 | V5 | player warp camera choreography: pre-warp cutscene camera 30.8 GU astern within 0.2 s of `Play()`, stays put while the ship streaks away; bridge viewscreen from 2.0 s after the ship enters the warp set until 0.6 s before it leaves; destination cutscene camera 53 GU ahead of the placement, aimed at the arriving ship, live 0.6 s before the ship appears; external Chase view and control back 2.0 s after arrival | ±0.2 s, ±1 GU | `warpcam_galaxy` |
 
 ---
@@ -816,6 +817,28 @@ ship (4.6 s), takes `ViewscreenForward` when the bridge is rendered (6.6
 s), moves to Vesuvi5 with the ship (11.6 s) and returns to Chase at 15.5 s.
 `IsCutsceneMode()` is **0** throughout — the warp is cinematic-window mode,
 not a cutscene.
+
+### 12.2a The Target camera through a target's destruction (`docs/results/camera_kill/`)
+
+Player in Target mode on a Kessok Heavy 60 GU dead ahead, the Kessok
+weakened to 60 hull with shields down and killed by the player's photons;
+the player's target, the Kessok's `IsDying`/`IsDead`, and the active
+camera sampled every 31 ms, screenshots every 0.5 s across the death.
+
+| event | timing | what the samples show |
+|---|---|---|
+| photon hit | t₀ | Kessok `IsDying` = 1 the same sample; explosion effects start |
+| dying phase | **6.9 / 8.9 / 12.1 s** in three runs (random) | the ship is still an object: player's target still set, **reticule brackets, name and range readout still drawn** on the exploding hulk (`kill_14.png`), camera in Target mode aimed at it |
+| removal | end of dying | ship object gone from the set, `IsDead` never sampled as 1; the **player's target becomes None and the reticule vanishes on the same sample** (brackets at 25.5 s, none at 26.5 s) |
+| afterwards | ≥ 34 s observed, no timeout | camera **stays in Target mode** aimed at the wreck's last position: with the player yawed 96° away the aim is still 4.7° off the wreck's bearing, exactly what it was while the ship lived (`kill_target4`) |
+
+The control run (`target_yaw_live`) shows this is not a freeze but the
+mode carrying on: with a *live* target and the player yawing in place the
+station also stays at world (0, 17.3, 2.2) and the aim stays 4.7° off the
+target — Target mode places the camera on the target→ship line, so a ship
+rotating on the spot does not carry it. After the death the mode keeps
+the last target position and behaves identically. What releases it
+(selecting another target, a camera key) was not exercised.
 
 ### 12.3 Harness notes (cost a session)
 

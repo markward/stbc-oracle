@@ -168,7 +168,7 @@ def parse_row(line: str) -> dict:
             d[k] = _floats(v)
         elif k == "fi":
             d[k] = [int(x) for x in v.split(",") if x != ""]
-        elif k in ("tgt", "fire", "set", "ws", "rs", "cs", "mode", "fr", "cam", "name", "scr", "hull", "ai", "player", "err", "tr"):
+        elif k in ("tgt", "fire", "set", "ws", "rs", "cs", "mode", "fr", "cam", "name", "scr", "hull", "ai", "player", "err", "tr", "ad"):
             d[k] = v
         elif k in ("isw", "bv", "tv", "cut", "cin", "pc", "n", "ships", "al", "pl", "hid", "clk", "dy", "tp"):
             d[k] = int(v)

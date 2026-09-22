@@ -336,8 +336,10 @@ def _OracleInitialize(pMission):
     except:
         _log.mark("start_error", _log.exc())
 
+g_attacker_name = ""
+
 def _OracleStartSimulation2(pObject, pEvent):
-    global g_pSet, g_pAttacker, g_pTarget, g_banks, g_subs, g_t0
+    global g_pSet, g_pAttacker, g_pTarget, g_banks, g_subs, g_t0, g_attacker_name
     _orig["StartSimulation2"](pObject, pEvent)
     _log.mark("qb_simulation_started", "1")
     try:
@@ -351,6 +353,7 @@ def _OracleStartSimulation2(pObject, pEvent):
         if g_pAttacker is None:
             _log.mark("no_attacker", "1")
             return
+        g_attacker_name = g_pAttacker.GetName()
         if P["ai"] and P["ai_module"] != "none":
             try:
                 g_pAttacker.ClearAI()
@@ -1010,6 +1013,19 @@ def _cam_step(step):
     elif kind == "stopfire":
         # with cam_step_s 0.5 after "fire": one torpedo (tubes are 0.656 s apart)
         g_pTarget.GetTorpedoSystem().StopFiring()
+    elif kind == "yawplayer":
+        v = App.TGPoint3(); v.SetXYZ(0.0, 0.0, 0.5)
+        g_pTarget.SetTargetAngularVelocityFraction(v)
+    elif kind == "stopyaw":
+        v = App.TGPoint3(); v.SetXYZ(0.0, 0.0, 0.0)
+        g_pTarget.SetTargetAngularVelocityFraction(v)
+    elif kind == "weaken":
+        # attacker to 60 hull, shields down: the next photon kills it
+        g_pAttacker.GetHull().SetCondition(60.0)
+        sh = g_pAttacker.GetShields()
+        for f in range(6):
+            sh.SetCurShields(f, 0.0)
+        _log.mark("weaken", "hull=%.0f" % g_pAttacker.GetHull().GetCondition())
     elif kind == "killbeams":
         g_pAttacker.GetPhaserSystem().SetCondition(0.0)
         _log.mark("killbeams", "1")
@@ -1396,6 +1412,19 @@ def OnSample(pObject, pEvent):
                     extra = extra + " tp=%d" % len(g_pSet.GetClassObjectList(App.CT_TORPEDO))
                 except:
                     pass
+                if P["sample"] == "target":
+                    try:
+                        tg = g_pTarget.GetTarget()
+                        tn = "-"
+                        if tg is not None:
+                            tn = string.replace(tg.GetName(), " ", "_")
+                        pA = App.ShipClass_GetObject(g_pSet, g_attacker_name)
+                        ad = "gone"
+                        if pA is not None:
+                            ad = "%d%d" % (int(pA.IsDying()), int(pA.IsDead()))
+                        extra = extra + " tgt=%s ad=%s" % (tn[:16], ad)
+                    except:
+                        extra = extra + " tgt=err"
             if not P["ai"]:
                 # impulse command fraction and the engine's actual power fraction
                 try:
