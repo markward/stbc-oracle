@@ -548,7 +548,7 @@ cadences). File = the capture whose raw rows are the reference.
 | R1 | tractor engages within one sample inside the projector's `MaxDamageDistance` (118: hits at 115, not at 125), shields irrelevant, no charge drain; arcs = the projectors' hardpoint arcs (forward ±60° yaw, −67°/+53° pitch; aft from ~130°) | ±3°, ±5 GU | `tractor_engage_*` |
 | R2 | parked target is moved toward the projector at 0.17–0.23 GU/s (velocity ≈ 0) in every mode incl. push, mass- and power-independent, stopping at 10.0 GU (pull/push/tow) or 12.3 GU (hold) from a 15 GU start; projector never moves | ±10 % | `tractor_galaxy_galaxy_*`, `tractor_pull_power125` |
 | R3 | a moving target under HOLD/PULL is slowed by a constant 0.417 GU/s² (Galaxy: 6.300 → 5.883 GU/s cap) until it leaves range = force `MaxDamage` 50 / mass 120 | ±5 % | `tractor_hold_running_target`, `tractor_none_running_target` |
-| E1 | a `SetupDamage(h, s)` nebula raises `ET_ENVIRONMENT_DAMAGE` 16×/s while a ship is inside but damages only once: `s/16` to every shield face if shields are up (discarded if ≤ 100 per face), else `h/16` to the hull; nothing afterwards, nothing to subsystems, position in the sphere irrelevant | exact | `docs/results/nebula/*` |
+| E1 | a `SetupDamage(h, s)` nebula raises `ET_ENVIRONMENT_DAMAGE` 16×/s while a ship is inside; the only damage is one hit to a ship present at the nebula's creation (not at easy difficulty): `s/16` to every shield face if shields are up (discarded if ≤ 100 per face), else `h/16` to the hull; a ship entering later takes nothing; nothing to subsystems | exact | `docs/results/nebula/*` |
 | C1 | collision is elastic with hardpoint masses (post-impact speeds) | ±3 % | `ram_*` |
 | C2 | rammed-ship damage = 8.2 × 2μv; shields untouched | ±10 % | `ram_*` |
 | P4 | bolt = script damage × emitter DamageScale; power setting changes shot cost 0.5/1/2, not damage | exact | `pulse_warbird_front_40_{meta,low,high}` |
@@ -1172,11 +1172,16 @@ hull and six faces every 31 ms, `ET_ENVIRONMENT_DAMAGE` counted):
 
 * **When**: the engine raises `ET_ENVIRONMENT_DAMAGE` on a contained ship
   **16 times a second** for as long as it is inside (296 events in 18.5 s,
-  1416 in 88.5 s, 327 across a 19 s crossing) — but **only the first event
-  does damage**. A ship parked inside for 90 s takes one hit at the first
-  tick and nothing more; regen and hull repair then climb back. Position in
-  the sphere does not matter (centre, half radius, 90 % radius all give the
-  same hit), nor does moving through versus sitting still.
+  1416 in 88.5 s, 327 across a 19 s crossing) — but damage is applied
+  **once, and only to a ship that is already inside when the nebula is
+  created**. A ship parked inside at creation takes one hit at the first
+  tick and nothing more over 90 s; regen and hull repair then climb back.
+  Position in the sphere does not matter (centre, half radius, 90 % radius
+  all give the same hit). A ship that **flies into** an existing nebula —
+  even at 5000 with shields down, even through two spheres in succession
+  (`n_enter*`, `n_reentry`) — takes **nothing** while the events keep
+  coming. **Difficulty gates it**: at easy (0) not even the creation hit
+  lands; medium (1) and hard (2) are identical (`n5000_ns_d0/d2`).
 * **What and how much**: one hit of **`shields / 16` to every one of the six
   shield faces** if the shields are up (5000 → 312.5 per face, 2000 → 125,
   1700 → 106.25), or **`hull / 16` to the hull** if they are down (5000 →
@@ -1190,9 +1195,13 @@ hull and six faces every 31 ms, `ET_ENVIRONMENT_DAMAGE` counted):
 * **One-argument `SetupDamage(x)`** does nothing measurable to hull or
   shields (5000, shields down).
 * The `1/16` is the event rate: the stock nebula was evidently written as
-  damage-per-second and the engine applies one tick's worth once. Whether
-  this is the 2002 build's bug or intent, a remake matching this build
-  should apply a single `arg/16` hit on entry and nothing after.
+  damage-per-second and the engine applies one tick's worth once, to
+  occupants present at creation. In the campaign the player warps into
+  Vesuvi 4 after the set is built, so **the E3M2 dust cloud never damages
+  the player**; Brex's "raise shields" line is `CoreDamage` reacting to the
+  events (throttled to one per 20 s by `ET_RADIATION_WARN`), and there is
+  no scripted destruction or timer in `E3M2.py`. A remake matching this
+  build applies nothing to a ship entering a nebula.
 
 Not measured: the visibility distance and sensor scale (visual / sensor
 effects), and whether shields drop or cloaks fail inside a nebula (the

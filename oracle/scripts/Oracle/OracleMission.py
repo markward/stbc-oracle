@@ -871,6 +871,9 @@ def _make_nebula():
             pNeb.SetupDamage(float(h), float(sd))
         kL = g_pTarget.GetWorldLocation()
         pNeb.AddNebulaSphere(kL.x + dx, kL.y + dy, kL.z + dz, R)
+        if len(parts) > 11:
+            # a second sphere: parts 8..11 = dx2/dy2/dz2/R2 (re-entry test)
+            pNeb.AddNebulaSphere(kL.x + float(parts[8]), kL.y + float(parts[9]), kL.z + float(parts[10]), float(parts[11]))
         g_pSet.AddObjectToSet(pNeb, "OracleNebula")
         if len(parts) > 7 and parts[7] == "count":
             g_pTarget.AddPythonFuncHandlerForInstance(App.ET_ENVIRONMENT_DAMAGE, __name__ + ".OnEnvDamage")

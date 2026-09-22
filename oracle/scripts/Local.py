@@ -73,7 +73,16 @@ def OnDeferredStart(pObject, pEvent):
             return
         pTopWindow = App.TopWindow_GetTopWindow()
         pOptionsWindow = pTopWindow.FindMainWindow(App.MWT_OPTIONS)
-        App.Game_SetDifficulty(1)          # QuickBattleHandler does this first
+        diff = 1
+        try:
+            App.g_kConfigMapping.LoadConfigFile("oracle_in.cfg")
+            v = App.g_kConfigMapping.GetStringValue("OracleIn", "difficulty")
+            if v is not None and v != "":
+                diff = int(v)
+        except:
+            pass
+        App.Game_SetDifficulty(diff)       # QuickBattleHandler does this first (1 = medium)
+        _mark("difficulty", str(diff))
         pNew = App.TGStringEvent_Create()
         pNew.SetEventType(App.ET_NEW_GAME)
         pNew.SetString(GAME_MODULE)

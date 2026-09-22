@@ -108,7 +108,9 @@ single shots. `phaserpatch:<Attr>=<v>[;…]` / `firephaser` / `stopphaser` /
 `tractorpatch` / `firetractor` / `stoptractor` for the tractor;
 `--effects-wrap` counts calls into the `Effects.py` hit hooks (`fx_*` markers);
 `--nebula h/s/R/dx/dy/dz[/sensor[/count]]` builds a MetaNebula around the
-target at act time (`count` also logs `ET_ENVIRONMENT_DAMAGE` events).
+target at act time (`count` also logs `ET_ENVIRONMENT_DAMAGE` events;
+`/dx2/dy2/dz2/R2` adds a second sphere); `--difficulty 0|1|2` sets
+`Game_SetDifficulty` (Quick Battle's own default is 1).
 
 ## Outputs
 
