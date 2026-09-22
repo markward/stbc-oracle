@@ -64,6 +64,58 @@ def deploy_scripts(oracle_dir: Path) -> None:
             pyc.unlink()
 
 
+SDK_HARDPOINTS = Path("C:/Users/user/Documents/Star Trek Bridge Commander/sdk/Build/scripts/ships/Hardpoints")
+
+
+def deploy_hp_patch(oracle_dir: Path, spec: str):
+    """hp_patch="<hardpoint>:<item>;<item>..." - deploy a patched copy of the SDK
+    hardpoint source for one run.  Items: ``<Var>.<Setter>=<value>`` appends
+    ``Var.Setter(value)`` after the templates are registered (the registered
+    template is the same object); ``pulse.<Setter>=<value>`` does it for every
+    ``PulseWeaponProperty_Create`` variable; ``-<Template Name>`` drops that
+    template's block from ``LoadPropertySet`` so the ship is built without it.
+    Returns a restore() that removes the .py and puts the stock .pyc back."""
+    hp, items = spec.split(":", 1)
+    src = (SDK_HARDPOINTS / f"{hp}.py").read_text(encoding="latin-1")
+    pulse_vars = re.findall(r"^(\w+) = App\.PulseWeaponProperty_Create\(", src, re.M)
+    extra = []
+    for item in items.split(";"):
+        item = item.strip()
+        if not item:
+            continue
+        if item.startswith("-"):
+            name = item[1:]
+            pat = (r'\tprop = App\.g_kModelPropertyManager\.FindByName\("' + re.escape(name)
+                   + r'", App\.TGModelPropertyManager\.LOCAL_TEMPLATES\)\n\tif \(prop != None\):\n\t\tpObj\.AddToSet\("Scene Root", prop\)\n')
+            src, n = re.subn(pat, "", src)
+            if n != 1:
+                raise SystemExit(f"hp_patch: template {name!r} not found in {hp}.py LoadPropertySet")
+            continue
+        lhs, val = item.split("=", 1)
+        var, setter = lhs.split(".", 1)
+        targets = pulse_vars if var == "pulse" else [var]
+        for v in targets:
+            extra.append(f"{v}.{setter}({val})")
+    marker = "def LoadPropertySet(pObj):"
+    assert src.count(marker) == 1
+    src = src.replace(marker, "# --- oracle hp_patch ---\n" + "\n".join(extra) + "\n# --- end hp_patch ---\n\n" + marker)
+    dst_dir = oracle_dir / "scripts" / "ships" / "Hardpoints"
+    py, pyc = dst_dir / f"{hp}.py", dst_dir / f"{hp}.pyc"
+    backup = pyc.read_bytes() if pyc.exists() else None
+    py.write_text(src, encoding="latin-1")
+    if pyc.exists():
+        pyc.unlink()
+
+    def restore():
+        if py.exists():
+            py.unlink()
+        if pyc.exists():
+            pyc.unlink()
+        if backup is not None:
+            pyc.write_bytes(backup)
+    return restore
+
+
 def write_inputs(oracle_dir: Path, params: dict) -> None:
     lines = ["[OracleIn]"]
     for k, v in params.items():
@@ -273,6 +325,9 @@ def run(oracle_dir: Path, params: dict, timeout_s: float, shot: Path | None,
     for p in [oracle_dir / BOOT_CFG] + list(oracle_dir.glob("oracle_out*.cfg")):
         if p.exists():
             p.unlink()
+    restore_hp = None
+    if params.get("hp_patch", "none") != "none":
+        restore_hp = deploy_hp_patch(oracle_dir, params["hp_patch"])
     write_inputs(oracle_dir, params)
 
     proc = subprocess.Popen([str(oracle_dir / "stbc.exe")], cwd=str(oracle_dir))
@@ -341,6 +396,8 @@ def run(oracle_dir: Path, params: dict, timeout_s: float, shot: Path | None,
                 time.sleep(0.5)
             if proc.poll() is None:
                 proc.kill()
+        if restore_hp is not None:
+            restore_hp()
     result = parse_output(oracle_dir)
     tree = oracle_dir / "AITree.txt"
     if tree.exists():
@@ -414,6 +471,8 @@ def main(argv=None) -> int:
     ap.add_argument("--face-away", action="store_true", help="place the attacker facing away from the target")
     ap.add_argument("--ai-module", default="none", help="with --ai: replace the Quick Battle AI by <module>.CreateAI (bisection)")
     ap.add_argument("--effects-wrap", action="store_true", help="count calls into Effects.py hit hooks (boot markers fx_*)")
+    ap.add_argument("--hp-patch", default="none", help="<hardpoint>:<Var>.<Setter>=<v>;pulse.<Setter>=<v>;-<Template Name> - patched SDK hardpoint deployed for this run only")
+    ap.add_argument("--dscale-set", type=float, default=-1.0, help=">=0: PulseWeapon_SetDamageScale on every emitter at act time, if the binding exists")
     ap.add_argument("--vfx-patch", default="none", help="projectile model override: photon:<i>=<v>,<i>=<v> (1-based CreateTorpedoModel args) or pulse:<i>=<v> (CreateDisruptorModel args)")
     a = ap.parse_args(argv)
 
@@ -429,7 +488,7 @@ def main(argv=None) -> int:
         "time_scale": a.time_scale, "target_alert": a.target_alert, "tractor_mode": a.tractor_mode,
         "shield_power": a.shield_power, "gen_frac": a.gen_frac,
         "ai": 1 if a.ai else 0, "ai_level": a.ai_level, "ai_log": 1 if a.ai_log else 0,
-        "target_motion": a.target_motion, "target_fire": 1 if a.target_fire else 0, "sample": a.sample, "view": a.view, "warp_patch": a.warp_patch, "mission": a.mission, "cam_mode": a.cam_mode, "cam_step_s": a.cam_step_s, "vfx_patch": a.vfx_patch, "effects_wrap": "1" if a.effects_wrap else "0", "ai_module": a.ai_module, "face_away": "1" if a.face_away else "0", "ai_patch": a.ai_patch, "nebula": a.nebula, "difficulty": a.difficulty,
+        "target_motion": a.target_motion, "target_fire": 1 if a.target_fire else 0, "sample": a.sample, "view": a.view, "warp_patch": a.warp_patch, "mission": a.mission, "cam_mode": a.cam_mode, "cam_step_s": a.cam_step_s, "vfx_patch": a.vfx_patch, "effects_wrap": "1" if a.effects_wrap else "0", "ai_module": a.ai_module, "face_away": "1" if a.face_away else "0", "ai_patch": a.ai_patch, "nebula": a.nebula, "difficulty": a.difficulty, "hp_patch": a.hp_patch, "dscale_set": a.dscale_set,
         "warp_stop_gu": a.warp_stop_gu, "warp_time": a.warp_time, "warp_dest": a.warp_dest, "warp_clear": a.warp_clear,
     }
     result = run(a.oracle_dir, params, a.timeout, a.shot, a.shot_at, a.shot_on, a.shot_count, a.shot_every, a.shot_delay)

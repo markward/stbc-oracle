@@ -120,28 +120,70 @@ So a Galaxy's sustained phaser output is ~125/s (one 250-point bank at
 ## 3. Pulse weapons (disruptor cannons)
 
 `PulseWeapon` emitters fire bolts; each bolt is one hit of
-`projectile script GetDamage() × PulseWeapon.GetDamageScale()`. The Warbird's
-`RomulanCannon` script says 400 and its cannons report `DamageScale 0.5`
-(power setting MED), so bolts land as 200; the Bird of Prey's
-`PulseDisruptor` (220) lands whole (`pulse_warbird_front_40_meta`).
+`projectile script GetDamage() × PulseWeapon.GetDamageScale()`, and
+**`DamageScale` is an engine constant keyed on the emitter's power setting,
+nothing else**:
+
+| `EnergyWeapon` power setting | `GetDamageScale()` | `GetPowerScaled()` = charge cost per bolt | Warbird bolt (script 400) | file |
+|---|---|---|---|---|
+| LOW (0) | **0.2** | 0.5 | **80** (20 of them in 12 s) | `dscale_warbird_low` |
+| MED (1) — every ship's default | **0.5** | 1.0 | **200** | `dscale_warbird` |
+| HIGH (2) | **1.0** | 2.0 | **400** | `dscale_warbird_high` |
+
+So a stock AI ship, which never leaves MED, lands every bolt at **half its
+projectile script's `GetDamage()`**; the burst total per full charge is the
+same at every setting (1495–1507 for the Warbird) because the cost per bolt
+scales 0.5/1/2 — the setting trades bolt size for bolt count. The
+`DamageScale` read-back is 0.5 on every emitter of every stock pulse-armed
+hull at MED (`dscale_{bop,vorcha,marauder,cardhybrid,cardoutpost,cardstation,cardstarbase,warbird}`)
+and is the same at spawn, after settling and after the first bolt lands
+(`dscale_spawn` / `bank*` / `dscale_firsthit` marks in each capture). It is
+**not derived from the hardpoint**: with the Warbird's `Disruptor Cannons`
+system flipped to `SetSingleFire(0)` (all four cannons then fire together,
+800 per sample), with two of the four cannons removed from the property set,
+or with every cannon's `DamageRadiusFactor` changed 0.2 → 0.1, the read-back
+stays 0.5 and the bolt stays 200
+(`dscale_warbird_{singlefire0,2cannons,drf01}`, deployed through
+`hp_patch`). Nor does it follow emitter count (1 – 8 across the hulls
+below), `MaxDamage` (25 – 1800), `MaxCharge`, `MinFiringCharge` or
+`CooldownTime`. There is no `PulseWeapon_SetDamageScale` binding in this
+build (`dscale_warbird_set1`, `has_setdscale = 0`), so a script cannot move
+it except through `SetPowerSetting`.
+
+| Ship (hardpoint) | emitters | script `GetDamage()` | hardpoint `MaxDamage` | `DamageScale` at MED | **bolt** | file |
+|---|---|---|---|---|---|---|
+| Warbird (`RomulanCannon`) | 4 | 400 | 300 | 0.5 | **200** | `dscale_warbird` |
+| Bird of Prey (`PulseDisruptor`) | 2 | 220 | 200 | 0.5 | **110** (the two cannons fire in the same frame, so a sample shows 220) | `dscale_bop`, `dscale_bop_1cannon` |
+| Vor'cha (`Disruptor`) | 2 | 400 | 400 | 0.5 | **200** (pairs → 400 per sample) | `dscale_vorcha` |
+| Ferengi Marauder (`FusionBolt`) | 2 | 300 | 400 | 0.5 | **150** (pairs → 300) | `dscale_marauder` |
+| Cardassian hybrid (`KessokDisruptor`) | 1 | 2000 | 1800 | 0.5 | **1000** | `dscale_cardhybrid` |
+| Cardassian outpost (`CardassianDisruptor`) | 6 | 350 | 25 | 0.5 | **175** | `dscale_cardoutpost` |
+| Cardassian station | 8 | 350 | 350 | 0.5 | **175** (two per sample → 350) | `dscale_cardstation` |
+| Cardassian starbase | 6 | 350 | 500 | 0.5 | **175** | `dscale_cardstarbase` |
+
+The hardpoint's `MaxDamage` plays no part in a bolt's damage (the outpost's
+25-point cannons land 175). A single bolt is only visible when one emitter
+fires alone: the Warbird is single-fire, so its bolts are staggered; the Bird
+of Prey with its starboard cannon removed lands **110** per bolt
+(`dscale_bop_1cannon`), which is what the stock pair of 220-per-sample hits
+is made of. Galor, Keldon and the Kessok hulls carry no `PulseWeaponProperty`.
 
 | Ship | emitters | bolt | volley pattern | file |
 |---|---|---|---|---|
 | Warbird, 40 GU | 4 | **200** | 4 bolts, then 4 more 0.34 s later; 1600 per 2.7 s burst; then recharge | `pulse_warbird_front_40` |
-| Bird of Prey, 40 GU | 2 | **220** | pairs every 2.28 s; 8 bolts / 1760 in 10.6 s | `pulse_bop_front_40` |
+| Bird of Prey, 40 GU | 2 | **110 × 2** | pairs every 2.28 s; 8 pairs / 1760 in 10.6 s | `pulse_bop_front_40` |
 
 Time from `IsFiring` to first hit at 40 GU: 0.66–0.91 s (bolt flight
 included). Bolts deliver the same amount to hull when shields are down as to
 a face when they are up (Warbird 1600 either way).
 
-**No range falloff and no power-setting effect on bolts:** Warbird bursts
-at 40 / 100 / 150 GU are 1501 / 1514 / 1526, and `EnergyWeapon.SetPowerSetting`
-LOW or HIGH on the emitters leaves the burst at 1501
-(`pulse_warbird_front_{40_low,40_high,100,150}`). What the setting does
-change is the **charge cost per shot**: Warbird cannon `MaxCharge` 2.0 drops
-by **0.5 / 1.0 / 2.0** per bolt at LOW / MED / HIGH (2.0 → 1.53 / 1.03 /
-0.03), recharging at ~0.16/s — the setting buys more or fewer bolts per
-charge, never bigger ones.
+**No range falloff:** Warbird bursts at 40 / 100 / 150 GU are 1501 / 1514 /
+1526 (`pulse_warbird_front_{40,100,150}`). The **charge cost per bolt** is
+`GetPowerScaled()` × ~1.0: the Warbird cannon's `MaxCharge` 2.0 drops by
+**0.5 / 1.0 / 2.0** per bolt at LOW / MED / HIGH (2.0 → 1.53 / 1.03 / 0.03),
+recharging at ~0.16/s; the other hulls cost 0.87–0.98 per bolt at MED
+(`dscale_*`, row `a` charge series). The cost is not the projectile script's
+`GetPowerCost()` (10 for all but the Kessok disruptor's 30, which costs 0.98).
 
 ---
 
@@ -514,7 +556,7 @@ cadences). File = the capture whose raw rows are the reference.
 | B8 | rate independent of remaining charge and of power-wanted | ±5 % | `..._charge3`, `..._power50` |
 | B9 | HIGH/MED drain 1.0 charge/s, LOW 0.35/s; bank stops at 0 | ±3 % | `phaser_high_front_57`, `phaser_low_front_57` |
 | P1 | Warbird pulse bolt = 200, 4 emitters, 8 bolts in 2.7 s | exact / ±1 bolt | `pulse_warbird_front_40` |
-| P2 | Bird of Prey bolt = 220, pairs every 2.28 s | exact / ±0.1 s | `pulse_bop_front_40` |
+| P2 | Bird of Prey bolt = 110, fired in pairs (220 per sample) every 2.28 s | exact / ±0.1 s | `pulse_bop_front_40`, `dscale_bop_1cannon` |
 | T1 | torpedo hit = script damage (500 / 550 / 2200) applied whole | exact | `torpedo_*_front_57` |
 | T2 | tubes launch 0.656 s apart | ±1 tick | `torpedo_galaxy_front_57` |
 | T3 | Positron torpedo flight for 57 GU ≈ 13.3 s; Photon ≈ 2.9 s | ±0.5 s | `torpedo_kessok_front_57`, `torpedo_galaxy_front_57` |
@@ -551,7 +593,7 @@ cadences). File = the capture whose raw rows are the reference.
 | E1 | a `SetupDamage(h, s)` nebula raises `ET_ENVIRONMENT_DAMAGE` 16×/s while a ship is inside; the only damage is one hit to a ship present at the nebula's creation (not at easy difficulty): `s/16` to every shield face if shields are up (discarded if ≤ 100 per face), else `h/16` to the hull; a ship entering later takes nothing; nothing to subsystems | exact | `docs/results/nebula/*` |
 | C1 | collision is elastic with hardpoint masses (post-impact speeds) | ±3 % | `ram_*` |
 | C2 | rammed-ship damage = 8.2 × 2μv; shields untouched | ±10 % | `ram_*` |
-| P4 | bolt = script damage × emitter DamageScale; power setting changes shot cost 0.5/1/2, not damage | exact | `pulse_warbird_front_40_{meta,low,high}` |
+| P4 | bolt = script `GetDamage()` × `DamageScale`, where `DamageScale` = **0.2 / 0.5 / 1.0** at power setting LOW / MED / HIGH (an engine constant: same on every stock emitter, unchanged by single-fire, emitter count, `DamageRadiusFactor`, `MaxDamage`, charge parameters; no setter binding) and the charge cost per bolt is 0.5 / 1 / 2; AI ships stay at MED so every stock bolt is half the script value | exact | `dscale_warbird_{low,high,singlefire0,2cannons,drf01,set1}`, `dscale_{bop,vorcha,marauder,cardhybrid,cardoutpost,cardstation,cardstarbase}` |
 | S6 | shield generator below DisabledPercentage ⇒ all faces 0, no regen | exact | `regen_gen{50,20}_face50` |
 | S7 | port is face 4 | exact | `phaser_high_port_57` |
 | V1 | player camera frustum: right 0.250, top 0.1875 at near 1.0 (28.1° × 21.2°, 4:3), far 5000 | exact | `cam_galaxy_tactical` (meta `player_camera`) |

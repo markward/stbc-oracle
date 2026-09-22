@@ -21,7 +21,7 @@ BASE = dict(attacker="KessokHeavy", target="Galaxy", weapon="phaser", motion="no
             power_wanted=-1.0, shield_face=-1, shield_frac=1.0, shields_off=0,
             settle_s=2.0, fire_at=1.0, duration=12.0, sample_dt=0.03,
             disable_target_weapons=1, rows="ab", torp_type=-1, pulse_power=-1,
-            time_scale=1.0, target_alert="red", tractor_mode="hold", shield_power=-1.0, gen_frac=-1.0, ai=0, ai_level=0.5, ai_log=0, target_motion="none", target_fire=0, warp_stop_gu=50.0, warp_time=5.0, warp_dest="Systems.Vesuvi.Vesuvi5", warp_clear=0.0, sample="attacker", view="bridge", warp_patch="none", mission="none", cam_mode="none", cam_step_s=4.0, vfx_patch="none")
+            time_scale=1.0, target_alert="red", tractor_mode="hold", shield_power=-1.0, gen_frac=-1.0, ai=0, ai_level=0.5, ai_log=0, target_motion="none", target_fire=0, warp_stop_gu=50.0, warp_time=5.0, warp_dest="Systems.Vesuvi.Vesuvi5", warp_clear=0.0, sample="attacker", view="bridge", warp_patch="none", mission="none", cam_mode="none", cam_step_s=4.0, vfx_patch="none", hp_patch="none", dscale_set=-1.0)
 
 MATRIX: dict[str, dict] = {
     # --- phasers: intensity table -------------------------------------------
@@ -93,6 +93,22 @@ MATRIX: dict[str, dict] = {
     # --- matrix 3 ------------------------------------------------------------
     "phaser_high_port_57":       dict(angle_deg=270.0),
     "pulse_warbird_front_40_meta": dict(attacker="Warbird", weapon="pulse", range_gu=40.0),
+    # --- PulseWeapon.GetDamageScale: what sets it? (bible 3) -----------------
+    "dscale_bop":        dict(attacker="BirdOfPrey", weapon="pulse", range_gu=40.0),
+    "dscale_vorcha":     dict(attacker="Vorcha", weapon="pulse", range_gu=40.0),
+    "dscale_marauder":   dict(attacker="Marauder", weapon="pulse", range_gu=40.0),
+    "dscale_cardhybrid": dict(attacker="CardHybrid", weapon="pulse", range_gu=40.0, duration=20.0),
+    "dscale_cardoutpost": dict(attacker="CardOutpost", weapon="pulse", range_gu=40.0),
+    "dscale_cardstation": dict(attacker="CardStation", weapon="pulse", range_gu=40.0),
+    "dscale_cardstarbase": dict(attacker="CardStarbase", weapon="pulse", range_gu=40.0),
+    "dscale_warbird":    dict(attacker="Warbird", weapon="pulse", range_gu=40.0),
+    "dscale_warbird_singlefire0": dict(attacker="Warbird", weapon="pulse", range_gu=40.0, hp_patch="warbird:DisruptorCannons.SetSingleFire=0"),
+    "dscale_warbird_2cannons": dict(attacker="Warbird", weapon="pulse", range_gu=40.0, hp_patch="warbird:-Star Cannon 2;-Port Cannon 2"),
+    "dscale_warbird_drf01": dict(attacker="Warbird", weapon="pulse", range_gu=40.0, hp_patch="warbird:pulse.SetDamageRadiusFactor=0.1"),
+    "dscale_warbird_set1": dict(attacker="Warbird", weapon="pulse", range_gu=40.0, dscale_set=1.0),
+    "dscale_warbird_low":  dict(attacker="Warbird", weapon="pulse", range_gu=40.0, pulse_power=0),
+    "dscale_bop_1cannon":  dict(attacker="BirdOfPrey", weapon="pulse", range_gu=40.0, hp_patch="birdofprey:-Star Cannon"),
+    "dscale_warbird_high": dict(attacker="Warbird", weapon="pulse", range_gu=40.0, pulse_power=2),
     "torpedo_warbird_front_57_noshields": dict(attacker="Warbird", weapon="torpedo", duration=20.0, shields_off=1),
     "regen_power50_face50": dict(weapon="none", shield_face=0, shield_frac=0.5, duration=20.0, shield_power=0.5),
     "regen_gen50_face50":   dict(weapon="none", shield_face=0, shield_frac=0.5, duration=20.0, gen_frac=0.5),

@@ -73,6 +73,7 @@ def _read_inputs():
     P["rows"]         = _gets("rows", "abc")            # which row types to emit
     P["torp_type"]    = int(_getf("torp_type", -1))     # TorpedoSystem.SetAmmoType index (-1 leave)
     P["pulse_power"]  = int(_getf("pulse_power", -1))   # EnergyWeapon.SetPowerSetting on pulse emitters
+    P["dscale_set"]   = _getf("dscale_set", -1.0)       # >=0: PulseWeapon_SetDamageScale on every emitter at act time, if the binding exists
     P["time_scale"]   = _getf("time_scale", 1.0)        # UtopiaModule.SetTimeScale at takeover
     P["target_alert"] = _gets("target_alert", "red")    # red|yellow|green
     P["tractor_mode"] = _gets("tractor_mode", "hold")   # hold|tow|pull|push
@@ -237,13 +238,38 @@ def _range():
 def _p3(v):
     return "%.3f,%.3f,%.3f" % (v.x, v.y, v.z)
 
+def _dscale_dump(tag):
+    """Every pulse emitter's DamageScale right now, as one mark (read-back timing)."""
+    if P["weapon"] != "pulse":
+        return
+    try:
+        out = []
+        for b in g_banks:
+            out.append(str(b.GetDamageScale()))
+        _log.mark("dscale_" + tag, "t=%.3f %s" % (App.g_kUtopiaModule.GetGameTime() - g_t0, string.join(out, ",")))
+    except:
+        _log.mark("dscale_" + tag, "err " + _log.exc())
+
+def _set_dscale():
+    """dscale_set: is there a setter at all, and does it move the bolt?"""
+    try:
+        has = hasattr(App, "PulseWeapon_SetDamageScale")
+        _log.meta("has_setdscale", "%d" % has)
+        if not has:
+            return
+        for b in g_banks:
+            App.PulseWeapon_SetDamageScale(b, P["dscale_set"])
+        _dscale_dump("set")
+    except:
+        _log.mark("dscale_set_error", _log.exc())
+
 def _record_meta():
     _log.meta("attacker_name", g_pAttacker.GetName())
     _log.meta("target_name", g_pTarget.GetName())
     _log.meta("n_banks", len(g_banks))
     ps = _weapon_system(g_pAttacker)
     if ps is not None:
-        for nm in ("GetPowerLevel", "GetPowerPercentage", "GetPowerPercentageWanted", "GetSingleFire"):
+        for nm in ("GetPowerLevel", "GetPowerPercentage", "GetPowerPercentageWanted", "GetSingleFire", "IsSingleFire", "GetNumChildSubsystems"):
             try:
                 _log.meta("ws_" + nm[3:], getattr(ps, nm)())
             except:
@@ -254,8 +280,16 @@ def _record_meta():
             if P["weapon"] == "torpedo":
                 _log.meta("bank%d" % i, "%s" % b.GetName())
             elif P["weapon"] == "pulse":
-                _log.meta("bank%d" % i, "%s md=%.1f mdd=%.1f mc=%.2f dscale=%s pscaled=%s pset=%s" % (
+                drf = -1.0
+                try:
+                    prop = App.WeaponProperty_Cast(b.GetProperty())
+                    if prop is not None:
+                        drf = prop.GetDamageRadiusFactor()
+                except:
+                    pass
+                _log.meta("bank%d" % i, "%s md=%.1f mdd=%.1f mc=%.2f mfc=%.2f cd=%.3f drf=%.3f dscale=%s pscaled=%s pset=%s" % (
                     b.GetName(), b.GetMaxDamage(), b.GetMaxDamageDistance(), b.GetMaxCharge(),
+                    b.GetMinFiringCharge(), b.GetCooldownTime(), drf,
                     str(b.GetDamageScale()), str(b.GetPowerScaled()), str(b.GetPowerSetting())))
             else:
                 _log.meta("bank%d" % i, "%s md=%.1f mdd=%.1f mc=%.2f" % (
@@ -447,6 +481,8 @@ def _OracleStartSimulation2(pObject, pEvent):
         g_banks = _emitters(g_pAttacker)
         g_subs = _all_subsystems(g_pTarget)
         _log.mark("placed", "banks=%d subs=%d range=%.2f" % (len(g_banks), len(g_subs), _range()))
+        g_t0 = App.g_kUtopiaModule.GetGameTime()
+        _dscale_dump("spawn")
         if P["view"] == "tactical":
             try:
                 pTop = App.TopWindow_GetTopWindow()
@@ -1230,6 +1266,8 @@ def OnAct(pObject, pEvent):
         if P["effects_wrap"] == "1":
             _wrap_effects()
         _act_target()
+        if P["dscale_set"] >= 0.0:
+            _set_dscale()
         if P["cam_mode"] != "none":
             g_cam_steps = string.split(P["cam_mode"], ",")
             MissionLib.CreateTimer(ET_CAMSTEP, __name__ + ".OnCamStep",
@@ -1341,8 +1379,11 @@ def _camera_row(t):
             g_cam_err = 1
             _log.mark("cam_error", _log.exc())
 
+g_hit_seen = 0
+g_hit_ref = -1.0
+
 def OnSample(pObject, pEvent):
-    global g_rows, g_last_row
+    global g_rows, g_last_row, g_hit_seen, g_hit_ref
     if g_done:
         return
     try:
@@ -1363,9 +1404,19 @@ def OnSample(pObject, pEvent):
                 ah = -1.0
             tv = g_pTarget.GetVelocityTG()
             tsp = (tv.x * tv.x + tv.y * tv.y + tv.z * tv.z) ** 0.5
+            shl = _shields(g_pTarget)
             _log.row("a t=%.4f f=%d c=%s fi=%s sh=%s h=%.1f ah=%.1f tsp=%.4f tp=%s" % (
                 t, fr, _fmt_list(ch, "%.3f"), _fmt_list(fi, "%d"),
-                _fmt_list(_shields(g_pTarget), "%.1f"), hull, ah, tsp, _p3(g_pTarget.GetWorldLocation())))
+                _fmt_list(shl, "%.1f"), hull, ah, tsp, _p3(g_pTarget.GetWorldLocation())))
+            if P["weapon"] == "pulse" and not g_hit_seen:
+                tot = hull
+                for v in shl:
+                    tot = tot + v
+                if g_hit_ref < 0.0:
+                    g_hit_ref = tot
+                elif tot < g_hit_ref - 1.0:
+                    g_hit_seen = 1
+                    _dscale_dump("firsthit")
         if string.find(P["rows"], "b") >= 0:
             conds = []
             for s in g_subs:

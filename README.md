@@ -103,7 +103,14 @@ projectile module's `Create` with one argument changed; `--shot-on <marker>
 --shot-count N --shot-every s --shot-delay s` takes a burst of screenshots
 once a boot marker appears (`oracle/vfx_measure.py` reduces them). Note
 `PrintWindow` returns an all-black frame now and then — bursts, not
-single shots. `phaserpatch:<Attr>=<v>[;…]` / `firephaser` / `stopphaser` /
+single shots. `hp_patch` (`--hp-patch "<hardpoint>:<Var>.<Setter>=<v>;pulse.<Setter>=<v>;-<Template Name>"`)
+deploys a patched copy of the SDK hardpoint source for one run — a setter
+appended after the templates are registered, `pulse.` for every
+`PulseWeaponProperty`, `-Name` dropping that template from `LoadPropertySet` —
+and restores the stock `.pyc` afterwards (`ships.Hardpoints.*` is `reload()`ed
+on every ship creation, so patching the module in-game is useless).
+`dscale_set` probes for a `PulseWeapon_SetDamageScale` binding (there is
+none in this build). `phaserpatch:<Attr>=<v>[;…]` / `firephaser` / `stopphaser` /
 `phaserstate` do the same for the player's beams (colours as r/g/b), and
 `tractorpatch` / `firetractor` / `stoptractor` for the tractor;
 `--effects-wrap` counts calls into the `Effects.py` hit hooks (`fx_*` markers);
