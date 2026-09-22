@@ -106,7 +106,9 @@ once a boot marker appears (`oracle/vfx_measure.py` reduces them). Note
 single shots. `phaserpatch:<Attr>=<v>[;…]` / `firephaser` / `stopphaser` /
 `phaserstate` do the same for the player's beams (colours as r/g/b), and
 `tractorpatch` / `firetractor` / `stoptractor` for the tractor;
-`--effects-wrap` counts calls into the `Effects.py` hit hooks (`fx_*` markers).
+`--effects-wrap` counts calls into the `Effects.py` hit hooks (`fx_*` markers);
+`--nebula h/s/R/dx/dy/dz[/sensor[/count]]` builds a MetaNebula around the
+target at act time (`count` also logs `ET_ENVIRONMENT_DAMAGE` events).
 
 ## Outputs
 

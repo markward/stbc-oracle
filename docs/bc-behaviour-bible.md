@@ -548,6 +548,7 @@ cadences). File = the capture whose raw rows are the reference.
 | R1 | tractor engages within one sample inside the projector's `MaxDamageDistance` (118: hits at 115, not at 125), shields irrelevant, no charge drain; arcs = the projectors' hardpoint arcs (forward ±60° yaw, −67°/+53° pitch; aft from ~130°) | ±3°, ±5 GU | `tractor_engage_*` |
 | R2 | parked target is moved toward the projector at 0.17–0.23 GU/s (velocity ≈ 0) in every mode incl. push, mass- and power-independent, stopping at 10.0 GU (pull/push/tow) or 12.3 GU (hold) from a 15 GU start; projector never moves | ±10 % | `tractor_galaxy_galaxy_*`, `tractor_pull_power125` |
 | R3 | a moving target under HOLD/PULL is slowed by a constant 0.417 GU/s² (Galaxy: 6.300 → 5.883 GU/s cap) until it leaves range = force `MaxDamage` 50 / mass 120 | ±5 % | `tractor_hold_running_target`, `tractor_none_running_target` |
+| E1 | a `SetupDamage(h, s)` nebula raises `ET_ENVIRONMENT_DAMAGE` 16×/s while a ship is inside but damages only once: `s/16` to every shield face if shields are up (discarded if ≤ 100 per face), else `h/16` to the hull; nothing afterwards, nothing to subsystems, position in the sphere irrelevant | exact | `docs/results/nebula/*` |
 | C1 | collision is elastic with hardpoint masses (post-impact speeds) | ±3 % | `ram_*` |
 | C2 | rammed-ship damage = 8.2 × 2μv; shields untouched | ±10 % | `ram_*` |
 | P4 | bolt = script damage × emitter DamageScale; power setting changes shot cost 0.5/1/2, not damage | exact | `pulse_warbird_front_40_{meta,low,high}` |
@@ -1150,3 +1151,49 @@ torpedo hull hits reported radius 0.727 instead of 0.200 — origin unknown.
 | `Textures/Effects/ExplosionA.tga` (RLE), `ExplosionB.tga` | 256 × 256 sheets | hit puffs, plumes, smoke, death |
 | `rough.tga`, `spark.tga`, `sphere.tga` | 64 × 64 | sparks (space), bridge sparks/smoke |
 | `sfx/Weapons/*.wav`, `sfx/Explosions/explo*.WAV` | — | `LoadTacticalSounds` name → file table |
+
+
+---
+
+## 15. Nebulae
+
+Levers (SDK, `Systems/*/*_S.py`): `MetaNebula_Create(r, g, b, visibility
+distance, sensor scale, overlay texture, external texture)`, one or more
+`AddNebulaSphere(x, y, z, radius)` ("fuzzy" spheres), optional
+`SetupDamage(hull, shields)` — the stock game has four: Belaruz 1 (radius
+900, no damage call), Vesuvi 4 (radius 1500, `SetupDamage(150, 20)`, the
+mission's asteroid cores opt out with `MissionLib.IgnoreEvent` on
+`ET_ENVIRONMENT_DAMAGE`), and the two multiplayer maps (Multi5 no damage,
+Multi6 `SetupDamage(1.0)` one-argument). `Nebula.IsObjectInNebula(obj)` is
+the containment test the helm and `Conditions.ConditionInNebula` use. What
+the damage call actually does was measured by building a nebula around the
+parked Galaxy at act time (`nebula` input; `docs/results/nebula/`,
+hull and six faces every 31 ms, `ET_ENVIRONMENT_DAMAGE` counted):
+
+* **When**: the engine raises `ET_ENVIRONMENT_DAMAGE` on a contained ship
+  **16 times a second** for as long as it is inside (296 events in 18.5 s,
+  1416 in 88.5 s, 327 across a 19 s crossing) — but **only the first event
+  does damage**. A ship parked inside for 90 s takes one hit at the first
+  tick and nothing more; regen and hull repair then climb back. Position in
+  the sphere does not matter (centre, half radius, 90 % radius all give the
+  same hit), nor does moving through versus sitting still.
+* **What and how much**: one hit of **`shields / 16` to every one of the six
+  shield faces** if the shields are up (5000 → 312.5 per face, 2000 → 125,
+  1700 → 106.25), or **`hull / 16` to the hull** if they are down (5000 →
+  312.5, 150 → 9.4). With shields up the hull is never touched, whatever
+  the hull argument (5000/1000: hull untouched). No subsystem changes.
+* **Threshold**: a shield hit of **≤ 100 per face is discarded** — 1600
+  (= 100.0) does nothing, 1700 (106.25) lands; so the stock Vesuvi 4
+  nebula (`20/16 = 1.25`) never marks a shield, and its `150/16 = 9.4` hull
+  hit lands only on a ship with shields down and is repaired within a
+  second. The hull has no such threshold (9.4 lands).
+* **One-argument `SetupDamage(x)`** does nothing measurable to hull or
+  shields (5000, shields down).
+* The `1/16` is the event rate: the stock nebula was evidently written as
+  damage-per-second and the engine applies one tick's worth once. Whether
+  this is the 2002 build's bug or intent, a remake matching this build
+  should apply a single `arg/16` hit on entry and nothing after.
+
+Not measured: the visibility distance and sensor scale (visual / sensor
+effects), and whether shields drop or cloaks fail inside a nebula (the
+Galaxy's faces stayed at full and regenerated normally inside).

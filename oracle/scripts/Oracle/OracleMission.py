@@ -82,7 +82,8 @@ def _read_inputs():
     P["ai_level"]     = _getf("ai_level", 0.5)          # BasicAttack Difficulty 0.0 / 0.5 / 1.0
     P["ai_module"]    = _gets("ai_module", "none")
     P["face_away"]    = _gets("face_away", "0")
-    P["ai_patch"]     = _gets("ai_patch", "none")        # with ai_module: "17,13" stub those BuilderCreateN with a Stay AI; "22=pass" return the wrapped AI          # 1: place the attacker facing away from the target (aft weapons bear)       # replace the QB AI with <module>.CreateAI(ship, friendlies, Difficulty=, UseCloaking=) (crash bisection)
+    P["ai_patch"]     = _gets("ai_patch", "none")
+    P["nebula"]       = _gets("nebula", "none")          # "hull/shields/radius/dx/dy/dz[/sensor]": MetaNebula around the target at act time; hull or shields "x" = one-arg SetupDamage        # with ai_module: "17,13" stub those BuilderCreateN with a Stay AI; "22=pass" return the wrapped AI          # 1: place the attacker facing away from the target (aft weapons bear)       # replace the QB AI with <module>.CreateAI(ship, friendlies, Difficulty=, UseCloaking=) (crash bisection)
     P["ai_log"]       = int(_getf("ai_log", 0))         # 1 = ArtificialIntelligence_LogAITree("AITree.txt") (armed in OracleGame)
     P["target_motion"] = _gets("target_motion", "none")  # none|impulse|yaw|warp|warpset : player ship drives itself at act time
     P["sample"]       = _gets("sample", "attacker")      # attacker|target : which ship row c follows
@@ -836,6 +837,52 @@ def _report_effects():
         if c.n:
             _log.mark("fx_" + c.name, "n=%d r=%s" % (c.n, string.join(c.radii, ",")))
 
+g_env_events = [0, 0.0]
+
+def OnEnvDamage(pObject, pEvent):
+    g_env_events[0] = g_env_events[0] + 1
+    try:
+        if g_env_events[0] <= 3:
+            info = ""
+            for nm in ("GetDamage", "GetFloat", "GetInt", "GetRadius"):
+                try:
+                    info = info + " %s=%s" % (nm[3:], str(getattr(pEvent, nm)()))
+                except:
+                    pass
+            _log.mark("env_damage", "t=%.3f n=%d%s" % (App.g_kUtopiaModule.GetGameTime() - g_t0, g_env_events[0], info))
+    except:
+        pass
+    pObject.CallNextHandler(pEvent)
+
+def _make_nebula():
+    """nebula = h/s/R/dx/dy/dz[/sensor]: a MetaNebula sphere of radius R centred dx,dy,dz from the target."""
+    try:
+        parts = string.split(P["nebula"], "/")
+        h = parts[0]; sd = parts[1]; R = float(parts[2])
+        dx = float(parts[3]); dy = float(parts[4]); dz = float(parts[5])
+        sens = 10.5
+        if len(parts) > 6:
+            sens = float(parts[6])
+        pNeb = App.MetaNebula_Create(155.0 / 255.0, 90.0 / 255.0, 185.0 / 255.0, 145.0, sens,
+                                     "data/Backgrounds/nebulaoverlay.tga", "data/Backgrounds/nebulaexternal.tga")
+        if sd == "x":
+            pNeb.SetupDamage(float(h))
+        elif h != "x":
+            pNeb.SetupDamage(float(h), float(sd))
+        kL = g_pTarget.GetWorldLocation()
+        pNeb.AddNebulaSphere(kL.x + dx, kL.y + dy, kL.z + dz, R)
+        g_pSet.AddObjectToSet(pNeb, "OracleNebula")
+        if len(parts) > 7 and parts[7] == "count":
+            g_pTarget.AddPythonFuncHandlerForInstance(App.ET_ENVIRONMENT_DAMAGE, __name__ + ".OnEnvDamage")
+        inside = -1
+        try:
+            inside = int(pNeb.IsObjectInNebula(g_pTarget))
+        except:
+            pass
+        _log.mark("nebula", "%s inside=%d" % (P["nebula"], inside))
+    except:
+        _log.mark("nebula_error", _log.exc())
+
 def _OraclePulseSpeed():
     return g_vfx[1][4]
 
@@ -1159,6 +1206,8 @@ def OnAct(pObject, pEvent):
         if P["motion"] != "none":
             _act_motion()
         _apply_vfx_patch()
+        if P["nebula"] != "none":
+            _make_nebula()
         if P["effects_wrap"] == "1":
             _wrap_effects()
         _act_target()
@@ -1400,6 +1449,14 @@ def OnEnd(pObject, pEvent):
             pass
     if g_counted:
         _report_effects()
+    if g_env_events[0]:
+        _log.mark("env_damage_total", "n=%d" % g_env_events[0])
+    if P["nebula"] != "none":
+        try:
+            pNeb = App.Nebula_GetObject(g_pSet, "OracleNebula")
+            _log.mark("nebula_end", "inside=%d" % int(pNeb.IsObjectInNebula(g_pTarget)))
+        except:
+            _log.mark("nebula_end", _log.exc())
     ok = _log.flush(1)
     _log.mark("flushed", "rows=%d ok=%d" % (g_rows, ok))
     try:
