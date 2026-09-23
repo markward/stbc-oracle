@@ -590,7 +590,7 @@ cadences). File = the capture whose raw rows are the reference.
 | R1 | tractor engages within one sample inside the projector's `MaxDamageDistance` (118: hits at 115, not at 125), shields irrelevant, no charge drain; arcs = the projectors' hardpoint arcs (forward ±60° yaw, −67°/+53° pitch; aft from ~130°) | ±3°, ±5 GU | `tractor_engage_*` |
 | R2 | parked target is moved toward the projector at 0.17–0.23 GU/s (velocity ≈ 0) in every mode incl. push, mass- and power-independent, stopping at 10.0 GU (pull/push/tow) or 12.3 GU (hold) from a 15 GU start; projector never moves | ±10 % | `tractor_galaxy_galaxy_*`, `tractor_pull_power125` |
 | R3 | a moving target under HOLD/PULL is slowed by a constant 0.417 GU/s² (Galaxy: 6.300 → 5.883 GU/s cap) until it leaves range = force `MaxDamage` 50 / mass 120 | ±5 % | `tractor_hold_running_target`, `tractor_none_running_target` |
-| E1 | a `SetupDamage(h, s)` nebula raises `ET_ENVIRONMENT_DAMAGE` 16×/s while a ship is inside; the only damage is one hit to a ship present at the nebula's creation (not at easy difficulty): `s/16` to every shield face if shields are up (discarded if ≤ 100 per face), else `h/16` to the hull; a ship entering later takes nothing; nothing to subsystems | exact | `docs/results/nebula/*` |
+| E1 | a `SetupDamage(h, s)` nebula raises `ET_ENVIRONMENT_DAMAGE` 16×/s while a ship is inside; the only damage is one hit to a ship present at the nebula's creation (not at easy difficulty): `s/16` to every shield face if shields are up (discarded if ≤ 100 per face), else `h/16` to the hull; a ship entering later takes nothing; nothing to subsystems. This is the shipped behaviour and reads as a bug (§15, "shipped behaviour vs evident intent") — a remake choosing to fix it should do so knowingly | exact | `docs/results/nebula/*` |
 | C1 | collision is elastic with hardpoint masses (post-impact speeds) | ±3 % | `ram_*` |
 | C2 | rammed-ship damage = 8.2 × 2μv; shields untouched | ±10 % | `ram_*` |
 | P4 | bolt = script `GetDamage()` × `DamageScale`, where `DamageScale` = **0.2 / 0.5 / 1.0** at power setting LOW / MED / HIGH (an engine constant: same on every stock emitter, unchanged by single-fire, emitter count, `DamageRadiusFactor`, `MaxDamage`, charge parameters; no setter binding) and the charge cost per bolt is 0.5 / 1 / 2; AI ships stay at MED so every stock bolt is half the script value | exact | `dscale_warbird_{low,high,singlefire0,2cannons,drf01,set1}`, `dscale_{bop,vorcha,marauder,cardhybrid,cardoutpost,cardstation,cardstarbase}` |
@@ -1267,6 +1267,44 @@ hull and six faces every 31 ms, `ET_ENVIRONMENT_DAMAGE` counted):
   events (throttled to one per 20 s by `ET_RADIATION_WARN`), and there is
   no scripted destruction or timer in `E3M2.py`. A remake matching this
   build applies nothing to a ship entering a nebula.
+
+### Shipped behaviour vs evident intent
+
+Everything above is what the 2002 build does and is what the captures show.
+It also looks like a **bug**, and a remake has to choose which of the two to
+match, so the evidence for that reading is set out here rather than folded
+into the measurements:
+
+* The engine raises `ET_ENVIRONMENT_DAMAGE` on a contained ship **16 times a
+  second for as long as it stays inside**, but applies damage once. There is
+  no reason to keep raising the event if a single hit at creation were the
+  design; 16/s is a tick rate, and the hit is exactly one tick's worth
+  (`arg/16`) of a per-second figure.
+* Damage lands only on ships **present when the nebula is created**, while
+  ships that enter later are tracked (their events keep coming) and never
+  hit — the signature of a one-shot apply at setup, or of a flag that is set
+  on the first apply and never cleared, rather than of a per-tick apply.
+* The **stock arguments are tuned for a continuous drain**: Vesuvi 4 is
+  `SetupDamage(150, 20)`. Read as 150 hull/s and 20 shields-per-face/s that
+  is a slow, survivable hazard; read as the single hits that actually land
+  it is 9.4 and 1.25, and the ≤ 100 shield threshold discards the 1.25
+  outright. The authored numbers only make sense under the per-second model.
+* The **mission scripting assumes a drain**: Brex's "raise shields" line via
+  `CoreDamage`, `ET_RADIATION_WARN` throttled to one per 20 s, and E3M2's
+  asteroid cores opting out with `MissionLib.IgnoreEvent` are all scaffolding
+  for a hazard that hurts over time.
+
+The difficulty gate (nothing at difficulty 0) looks deliberate by contrast —
+but it sits on top of the broken apply, so the outcome is "nothing" at every
+difficulty for anyone who flies in. Which of the two faults it is (a
+once-only apply, or a per-second value applied as one untimed tick) cannot
+be told from outside the exe; the observables fit either, or both.
+
+**For a remake:** matching this build means applying one hit of `arg/16` to
+ships inside at creation and nothing else. Matching the evident intent means
+a per-second drain of `shields` per face (shields up) or `hull` (shields
+down) at difficulty > 0 for as long as a ship is inside. E1 asserts the
+former, because that is what was measured.
 
 Not measured: the visibility distance and sensor scale (visual / sensor
 effects), and whether shields drop or cloaks fail inside a nebula (the
