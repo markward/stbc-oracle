@@ -1315,6 +1315,18 @@ into the measurements:
   `CoreDamage`, `ET_RADIATION_WARN` throttled to one per 20 s, and E3M2's
   asteroid cores opting out with `MissionLib.IgnoreEvent` are all scaffolding
   for a hazard that hurts over time.
+* **No shipped map can show the hazard at all**, so nobody could have
+  playtested it. `SetupDamage` is called exactly **twice in the whole script
+  set**: `Systems/Vesuvi/Vesuvi4_S.py` (`150, 20` — E3M2, where the per-face
+  1.25 is discarded by the ≤ 100 threshold and the 9.4 hull hit needs a ship
+  present at creation, which the player never is) and
+  `Systems/Multi6/Multi6_S.py` (`1.0`, the one-argument form, which does
+  nothing measurable, on a multiplayer map). The campaign's other nebula —
+  Belaruz 1, radius 900, the one E4M4 flies through — **never calls
+  `SetupDamage`**, so its damage side is never armed; a playthrough of E4M4
+  takes nothing, correctly, for that reason rather than because of the fault
+  above. Multi5 likewise. One nebula in the game even attempts damage, and
+  it cannot land any.
 
 The difficulty gate (nothing at difficulty 0) looks deliberate by contrast —
 but it sits on top of the broken apply, so the outcome is "nothing" at every
