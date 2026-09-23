@@ -912,7 +912,29 @@ every ship in the player's set dumped every 5 s for 90 s
 campaign start) was added. The full per-ship tables — position, forward,
 speed, hull, six shield faces, alert, AI, target, flags at t = 0, +30 s and
 +90 s — are in **`docs/mission-scenes.md`** (`oracle/scene_report.py`
-regenerates it). What a remake has to reproduce, mission by mission:
+regenerates it).
+
+**The mission names here are script names, and the game's own Test Only menu
+renames them.** Booting with `-TestMode` (`GetTestMenuState() >= 2`) turns the
+New Game pane into a mission picker, but its buttons are numbered
+sequentially per episode while the event each one fires points at whatever
+script that slot holds, so 13 of the 26 buttons carry a different name from
+the mission they run (`MainMenu/mainmenu.py`, `BuildNewGamePane` button table
+vs the `RunOverrideMission` handlers; the missions with no button cannot be
+reached from the menu at all). When cross-referencing a capture against the
+menu:
+
+| menu button | runs | | menu button | runs |
+|---|---|---|---|---|
+| E2M1 / E2M2 / E2M3 / E2M4 | E2M0 / E2M1 / E2M2 / E2M6 | | E4M1 / E4M2 / E4M3 | **E4M6 / E4M4 / E4M5** |
+| E3M3 / E3M4 | E3M4 / E3M5 | | E5M1 / E5M2 | E5M2 / E5M4 |
+| E7M4 | E7M6 | | E1M*, E6M*, E8M1–2 | as labelled |
+
+So E4M4 is the button labelled **E4M2**, and E7M6 is **E7M4**. The harness
+never goes through this menu — it calls `RunOverrideMission` directly with
+the script name, which is what `scene_*.json` and the tables below record.
+
+What a remake has to reproduce, mission by mission:
 
 | mission | player (script, position) | set | other objects at t = 0 (script, AI) | what happens in 90 s of nobody touching anything |
 |---|---|---|---|---|
