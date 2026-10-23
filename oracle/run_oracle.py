@@ -218,7 +218,7 @@ def parse_row(line: str) -> dict:
             d[k] = int(v)
         elif k in ("c", "sh", "s", "p", "v", "w", "fw", "tp"):
             d[k] = _floats(v)
-        elif k == "fi":
+        elif k in ("fi", "rq"):
             d[k] = [int(x) for x in v.split(",") if x != ""]
         elif k in ("tgt", "fire", "set", "ws", "rs", "cs", "mode", "fr", "cam", "name", "scr", "hull", "ai", "player", "err", "tr", "ad"):
             d[k] = v
@@ -242,7 +242,7 @@ def parse_output(oracle_dir: Path) -> dict:
         sec = parse_cfg_section(path, "OracleOut")
         keys = sorted(k for k in sec if k.startswith("r") and k[1:].isdigit())
         raw_rows.extend(sec[k] for k in keys if sec[k] != "")
-    rows = {"a": [], "b": [], "c": [], "d": [], "e": [], "s": [], "h": [], "m": [], "f": []}
+    rows = {"a": [], "b": [], "c": [], "d": [], "e": [], "s": [], "h": [], "m": [], "f": [], "r": []}
     for line in raw_rows:
         d = parse_row(line)
         rows.setdefault(d["kind"], []).append(d)
@@ -250,7 +250,7 @@ def parse_output(oracle_dir: Path) -> dict:
     boot = parse_cfg_section(oracle_dir / BOOT_CFG, "OracleBoot")
     hook = parse_cfg_section(oracle_dir / BOOT_CFG, "OracleHook")
     return {"meta": meta, "rows": rows["a"], "sub_rows": rows["b"], "motion_rows": rows["c"], "camera_rows": rows["d"], "active_camera_rows": rows["e"],
-            "torpedo_rows": rows["f"], "scene_rows": rows["s"], "scene_health_rows": rows["h"], "scene_meta_rows": rows["m"],
+            "torpedo_rows": rows["f"], "repair_rows": rows["r"], "scene_rows": rows["s"], "scene_health_rows": rows["h"], "scene_meta_rows": rows["m"],
             "subsystems": [{"name": x[0], "max": float(x[1]) if len(x) > 1 and x[1] != "err" else None,
                             "radius": float(x[2]) if len(x) > 2 else None,
                             "pos": _floats(x[3]) if len(x) > 3 else None} for x in subs],
@@ -448,7 +448,7 @@ def main(argv=None) -> int:
     ap.add_argument("--shield-face", type=int, default=-1, help="preset this face (0-5) to --shield-frac of max")
     ap.add_argument("--shield-frac", type=float, default=1.0)
     ap.add_argument("--shields-off", action="store_true", help="zero every face at act time")
-    ap.add_argument("--rows", default="abc", help="row kinds to sample: a weapon, b subsystems, c motion, d player camera")
+    ap.add_argument("--rows", default="abc", help="row kinds to sample: a weapon, b subsystems, c motion, d player camera, r repair queue")
     ap.add_argument("--intensity", type=int, default=2, help="0=LOW 1=MED 2=HIGH")
     ap.add_argument("--charge", type=float, default=-1.0, help="-1 = leave at max")
     ap.add_argument("--power-wanted", type=float, default=-1.0)
@@ -474,6 +474,9 @@ def main(argv=None) -> int:
     ap.add_argument("--hp-patch", default="none", help="<hardpoint>:<Var>.<Setter>=<v>;pulse.<Setter>=<v>;-<Template Name> - patched SDK hardpoint deployed for this run only")
     ap.add_argument("--dscale-set", type=float, default=-1.0, help=">=0: PulseWeapon_SetDamageScale on every emitter at act time, if the binding exists")
     ap.add_argument("--vfx-patch", default="none", help="projectile model override: photon:<i>=<v>,<i>=<v> (1-based CreateTorpedoModel args) or pulse:<i>=<v> (CreateDisruptorModel args)")
+    ap.add_argument("--sub-preset", default="none", help="Name=frac;Name=frac (\"_\" for spaces): target subsystem condition fractions at act time, set without a hit")
+    ap.add_argument("--repair-power", type=float, default=-1.0, help="target RepairSubsystem power wanted at act time")
+    ap.add_argument("--repair-enqueue", action="store_true", help="AddToRepairList every --sub-preset subsystem after setting it")
     a = ap.parse_args(argv)
 
     params = {
@@ -489,6 +492,7 @@ def main(argv=None) -> int:
         "shield_power": a.shield_power, "gen_frac": a.gen_frac,
         "ai": 1 if a.ai else 0, "ai_level": a.ai_level, "ai_log": 1 if a.ai_log else 0,
         "target_motion": a.target_motion, "target_fire": 1 if a.target_fire else 0, "sample": a.sample, "view": a.view, "warp_patch": a.warp_patch, "mission": a.mission, "cam_mode": a.cam_mode, "cam_step_s": a.cam_step_s, "vfx_patch": a.vfx_patch, "effects_wrap": "1" if a.effects_wrap else "0", "ai_module": a.ai_module, "face_away": "1" if a.face_away else "0", "ai_patch": a.ai_patch, "nebula": a.nebula, "difficulty": a.difficulty, "hp_patch": a.hp_patch, "dscale_set": a.dscale_set,
+        "sub_preset": a.sub_preset, "repair_power": a.repair_power, "repair_enqueue": 1 if a.repair_enqueue else 0,
         "warp_stop_gu": a.warp_stop_gu, "warp_time": a.warp_time, "warp_dest": a.warp_dest, "warp_clear": a.warp_clear,
     }
     result = run(a.oracle_dir, params, a.timeout, a.shot, a.shot_at, a.shot_on, a.shot_count, a.shot_every, a.shot_delay)

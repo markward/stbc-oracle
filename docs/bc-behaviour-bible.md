@@ -1,6 +1,6 @@
 # Star Trek: Bridge Commander — measured behaviour bible
 
-**Status:** living document (88 captures, five study matrices). Every number here was measured on the original
+**Status:** living document (97 captures, six study matrices). Every number here was measured on the original
 `stbc.exe` (GOG release, 2002-04-09 build) by the unattended oracle in this
 repo, and every claim names the capture in [`results/`](results/) that backs
 it. Nothing is taken from disassembly or memory; where a reverse-engineered
@@ -611,6 +611,11 @@ cadences). File = the capture whose raw rows are the reference.
 | X1 | `CreateTorpedoModel` argument semantics (core scale, flare rotation/count/length/lifespan, glow base size / pulse rate / pulse amplitude) as tabulated in §14.2; projectile `GetRadius()` = sprite bound (photon 0.770) | ±5 % on radii | `docs/results/vfx/*` |
 | V7 | a target's destruction: dying phase 7–12 s with the reticule and target lock kept on the exploding hulk; at removal the player's target clears and the reticule vanishes on the same sample; the Target camera stays in Target mode aimed at the wreck's last position indefinitely (≥ 34 s), as it would for a live target that does not move | ±1 sample | `camera_kill/*` |
 | V5 | player warp camera choreography: pre-warp cutscene camera 30.8 GU astern within 0.2 s of `Play()`, stays put while the ship streaks away; bridge viewscreen from 2.0 s after the ship enters the warp set until 0.6 s before it leaves; destination cutscene camera 53 GU ahead of the placement, aimed at the arriving ship, live 0.6 s before the ship appears; external Chase view and control back 2.0 s after arrival | ±0.2 s, ±1 GU | `warpcam_galaxy` |
+| R1 | a subsystem below max is queued for repair with no hit (condition set directly); the hull is repairable | queued = 1 | `repair_hull50` |
+| R2 | repair rate per queued item = `MaxRepairPoints × (repair-system condition / max) / min(NumRepairTeams, items queued) / RepairComplexity` | ±3 % | `repair_hull50*` |
+| R3 | Galaxy hull, alone in the queue: 16.7 points/s (50 / 3), in steps ≈ 3 per second | ±3 % | `repair_hull50` |
+| R4 | only the first `NumRepairTeams` queued items are worked; the rest wait at their condition | exact | `repair_hull50_sens50_t1` |
+| R5 | the repair system repairs itself from the same pool; at condition 0 nothing is repaired, itself included | exact | `repair_hull50_eng50`, `repair_hull50_eng0` |
 
 ---
 
@@ -632,6 +637,11 @@ cadences). File = the capture whose raw rows are the reference.
   boot it stalls the load).
 * Whether the Galaxy's own fire in the shooting run ever reached the
   Kessok's shields (attacker faces are not sampled yet).
+* Repair (§16): whether repair-system *power* matters (setting power wanted
+  to 0.5 left the measured power percentage at 1.0); what happens when an
+  item reaches max (a 30 s run moves the hull 3 %); whether a destroyed
+  (condition 0) subsystem other than the repair system itself is skipped;
+  queue order when several items are damaged by hits rather than preset.
 
 ---
 
@@ -1343,3 +1353,53 @@ former, because that is what was measured.
 Not measured: the visibility distance and sensor scale (visual / sensor
 effects), and whether shields drop or cloaks fail inside a nebula (the
 Galaxy's faces stayed at full and regenerated normally inside).
+
+---
+
+## 16. Repair — the hull repairs over time, through engineering
+
+**Short answer for a remake: yes, the hull repairs, but there is no passive
+regeneration. The hull is one item in the damage-control queue, repaired by
+the repair system (`Engineering` on the Galaxy) like any other subsystem.**
+
+Method: weapon `none`; at act time the target's subsystems are set below max
+with `SetCondition` (no hit, so the repair path is the only thing that moves
+them), 30 s sampled every 0.25 s (`--sub-preset`, row `r` = per-subsystem
+`IsBeingRepaired`). Stock Galaxy: Engineering `MaxRepairPoints 50`,
+`NumRepairTeams 3`, condition 12000; Hull max 15000, `RepairComplexity 3`;
+Sensor Array max 8000, complexity 1; Engineering complexity 2. Reduced by
+`oracle/repair_report.py`.
+
+| Capture | Change from stock | Measured rate (points/s) | Formula |
+|---|---|---|---|
+| `repair_hull50` | hull at 50 % | hull 16.73 | 50 / 1 / 3 = 16.67 |
+| `repair_hull50_enq` | + explicit `AddToRepairList` | hull 16.74 | same — queueing is automatic |
+| `repair_hull50_cx1` | hull `RepairComplexity 1` | hull 49.65 | 50 / 1 / 1 |
+| `repair_hull50_pts100` | `MaxRepairPoints 100` | hull 33.48 | 100 / 1 / 3 |
+| `repair_hull50_sens50` | + Sensor Array at 50 % | hull 8.37, sensors 25.09 | 50 / 2 / 3, 50 / 2 / 1 |
+| `repair_hull50_sens50_t1` | + sensors, `NumRepairTeams 1` | hull 16.74, sensors 0 | first item only |
+| `repair_hull50_eng50` | + Engineering at 50 % | hull 4.25, Engineering 6.36 | 50 × 0.5 / 2 / 3 = 4.17, / 2 = 6.25 (Engineering climbs 6002 → 6188 during the run, so the factor averages 0.508) |
+| `repair_hull50_eng0` | + Engineering at 0 | 0 for both | factor 0 |
+| `repair_hull50_pw50` | Engineering power wanted 0.5 | hull 16.74 | inconclusive: power percentage still read 1.000 |
+
+So, per queued item:
+
+    rate = MaxRepairPoints × (repair condition / repair max)
+           / min(NumRepairTeams, items in queue) / item RepairComplexity
+
+* **Queueing is automatic.** A subsystem set below max is in the queue on
+  the next sample without a hit and without `AddToRepairList` (R1).
+* **The pool is split evenly across the items being worked, then each share
+  is divided by that item's complexity.** A high-complexity hull is slow:
+  the stock Galaxy hull takes 7.5 minutes (7500 / 16.7 s) to repair from 50 %.
+* **Only `NumRepairTeams` items are worked at once**, in queue order; the
+  rest hold their condition (R4).
+* **The repair system repairs itself** from the same pool, so a damaged
+  engineering section recovers, but slowly, and at zero it never does (R5).
+* Repair is applied in discrete steps, about 3 per second (5.5 points per
+  step at the stock hull rate); 0.25 s sampling cannot resolve the period
+  more finely.
+* This is consistent with the nebula captures (§15): the 9.4-point hull hit
+  is "repaired within a second" at 16.7/s.
+
+Open items are listed in §10.

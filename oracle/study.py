@@ -21,7 +21,8 @@ BASE = dict(attacker="KessokHeavy", target="Galaxy", weapon="phaser", motion="no
             power_wanted=-1.0, shield_face=-1, shield_frac=1.0, shields_off=0,
             settle_s=2.0, fire_at=1.0, duration=12.0, sample_dt=0.03,
             disable_target_weapons=1, rows="ab", torp_type=-1, pulse_power=-1,
-            time_scale=1.0, target_alert="red", tractor_mode="hold", shield_power=-1.0, gen_frac=-1.0, ai=0, ai_level=0.5, ai_log=0, target_motion="none", target_fire=0, warp_stop_gu=50.0, warp_time=5.0, warp_dest="Systems.Vesuvi.Vesuvi5", warp_clear=0.0, sample="attacker", view="bridge", warp_patch="none", mission="none", cam_mode="none", cam_step_s=4.0, vfx_patch="none", hp_patch="none", dscale_set=-1.0)
+            time_scale=1.0, target_alert="red", tractor_mode="hold", shield_power=-1.0, gen_frac=-1.0, ai=0, ai_level=0.5, ai_log=0, target_motion="none", target_fire=0, warp_stop_gu=50.0, warp_time=5.0, warp_dest="Systems.Vesuvi.Vesuvi5", warp_clear=0.0, sample="attacker", view="bridge", warp_patch="none", mission="none", cam_mode="none", cam_step_s=4.0, vfx_patch="none", hp_patch="none", dscale_set=-1.0,
+            sub_preset="none", repair_power=-1.0, repair_enqueue=0)
 
 MATRIX: dict[str, dict] = {
     # --- phasers: intensity table -------------------------------------------
@@ -190,6 +191,17 @@ MATRIX: dict[str, dict] = {
     "tractor_engage_yaw":   dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="hold", motion="yaw", rows="c", range_gu=20.0, duration=30.0),
     "tractor_engage_pitch": dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="hold", motion="pitch", rows="c", range_gu=20.0, duration=30.0),
     "tractor_galaxy_galaxy_pull": dict(attacker="Galaxy", target="Galaxy", weapon="tractor", tractor_mode="pull", rows="abc", range_gu=15.0, duration=30.0),
+    # --- hull repair (bible 16): hull set below max by SetCondition, no hit, weapon none.
+    # Galaxy stock: Engineering MaxRepairPoints 50, NumRepairTeams 3; Hull RepairComplexity 3, max 15000.
+    "repair_hull50":           dict(weapon="none", rows="abr", sub_preset="Hull=0.5", duration=30.0, sample_dt=0.25),
+    "repair_hull50_enq":       dict(weapon="none", rows="abr", sub_preset="Hull=0.5", repair_enqueue=1, duration=30.0, sample_dt=0.25),
+    "repair_hull50_eng50":     dict(weapon="none", rows="abr", sub_preset="Hull=0.5;Engineering=0.5", repair_enqueue=1, duration=30.0, sample_dt=0.25),
+    "repair_hull50_eng0":      dict(weapon="none", rows="abr", sub_preset="Hull=0.5;Engineering=0.0", repair_enqueue=1, duration=30.0, sample_dt=0.25),
+    "repair_hull50_pw50":      dict(weapon="none", rows="abr", sub_preset="Hull=0.5", repair_enqueue=1, repair_power=0.5, duration=30.0, sample_dt=0.25),
+    "repair_hull50_pts100":    dict(weapon="none", rows="abr", sub_preset="Hull=0.5", repair_enqueue=1, hp_patch="galaxy:Engineering.SetMaxRepairPoints=100.0", duration=30.0, sample_dt=0.25),
+    "repair_hull50_cx1":       dict(weapon="none", rows="abr", sub_preset="Hull=0.5", repair_enqueue=1, hp_patch="galaxy:Hull.SetRepairComplexity=1.0", duration=30.0, sample_dt=0.25),
+    "repair_hull50_sens50":    dict(weapon="none", rows="abr", sub_preset="Hull=0.5;Sensor_Array=0.5", repair_enqueue=1, duration=30.0, sample_dt=0.25),
+    "repair_hull50_sens50_t1": dict(weapon="none", rows="abr", sub_preset="Hull=0.5;Sensor_Array=0.5", repair_enqueue=1, hp_patch="galaxy:Engineering.SetNumRepairTeams=1", duration=30.0, sample_dt=0.25),
 }
 
 
