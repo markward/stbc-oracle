@@ -229,7 +229,7 @@ def main(argv=None) -> int:
         ok = result["done"] and (result["rows"] or result["motion_rows"] or result.get("camera_rows") or result.get("scene_meta_rows"))
         print(run_oracle.summarise(result), flush=True)
         if ok:
-            out.write_text(json.dumps(result, indent=1))
+            run_oracle.write_result(out, result)
             print(f"    -> {out.name}", flush=True)
         else:
             failures.append(name)

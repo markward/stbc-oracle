@@ -61,7 +61,30 @@ def _clear_section():
         _cfg.SetStringValue("OracleOut", "r%04d" % i, "")
         i = i + 1
 
+_written = [0]      # rows already saved in completed (full) chunks; never rewritten
+
+def _save_chunk(c, done, nchunks, n):
+    _clear_section()
+    base = c * CHUNK
+    i = 0
+    while i < CHUNK and base + i < n:
+        _cfg.SetStringValue("OracleOut", "r%04d" % i, _rows[base + i])
+        i = i + 1
+    _cfg.SetIntValue("OracleOut", "chunk", c)
+    _cfg.SetIntValue("OracleOut", "chunks", nchunks)
+    _cfg.SetIntValue("OracleOut", "rows_in_chunk", i)
+    _cfg.SetIntValue("OracleOut", "rows", n)
+    _cfg.SetIntValue("OracleOut", "done", done)
+    if c == 0:
+        _cfg.SaveConfigFile("oracle_out.cfg")
+    else:
+        _cfg.SaveConfigFile("oracle_out%d.cfg" % c)
+    return i
+
 def flush(done):
+    """Incremental: rewrite only chunks not yet saved complete, then chunk 0 last (it carries
+    the meta and the chunk count the driver reads), so a crash after any flush loses nothing
+    flushed.  Safe to call repeatedly (end of every session shot) and once more at the end."""
     try:
         for k, v in _meta:
             _cfg.SetStringValue("OracleOut", "m_" + k, v)
@@ -69,24 +92,15 @@ def flush(done):
         nchunks = (n + CHUNK - 1) / CHUNK
         if nchunks == 0:
             nchunks = 1
-        c = 0
+        c = _written[0] / CHUNK
+        if c == 0:
+            c = 1
         while c < nchunks:
-            _clear_section()
-            base = c * CHUNK
-            i = 0
-            while i < CHUNK and base + i < n:
-                _cfg.SetStringValue("OracleOut", "r%04d" % i, _rows[base + i])
-                i = i + 1
-            _cfg.SetIntValue("OracleOut", "chunk", c)
-            _cfg.SetIntValue("OracleOut", "chunks", nchunks)
-            _cfg.SetIntValue("OracleOut", "rows_in_chunk", i)
-            _cfg.SetIntValue("OracleOut", "rows", n)
-            _cfg.SetIntValue("OracleOut", "done", done)
-            if c == 0:
-                _cfg.SaveConfigFile("oracle_out.cfg")
-            else:
-                _cfg.SaveConfigFile("oracle_out%d.cfg" % c)
+            k = _save_chunk(c, done, nchunks, n)
+            if k == CHUNK:
+                _written[0] = (c + 1) * CHUNK
             c = c + 1
+        _save_chunk(0, done, nchunks, n)
         return 1
     except:
         mark("flush_error", exc())

@@ -182,6 +182,9 @@ def OnSnap(pObject, pEvent):
         n = g_snap[0]
         g_snap[0] = n + 1
         t = App.g_kUtopiaModule.GetGameTime() - g_t0[0]
+        if n == 0:
+            # run_oracle.py's stall check waits for a key ending in first_sample once timers are armed.
+            _log.mark("first_sample", "t=%.3f" % t)
         pPlayer = App.Game_GetCurrentPlayer()
         pSet = None
         if pPlayer is not None:

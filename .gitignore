@@ -2,3 +2,18 @@ __pycache__/
 *.pyc
 .venv/
 *.png
+
+# Raw run output (gigabytes): kept locally, never committed. Curated results
+# that docs cite go under docs/results/.
+results_mac/
+results_win/
+scorecard/*/
+scorecard/*.jsonl
+scorecard/targeting_compare.json
+scorecard/dauntless_pytest_baseline_failures.txt
+
+# Hull meshes exported from the user's own game install for the headless
+# Windows harness (harness_win/_dauntless_host.py). Game asset data: never
+# committed; each machine exports its own from its own copy.
+harness_win/hull_shapes.json.gz
+oracle/native/out/

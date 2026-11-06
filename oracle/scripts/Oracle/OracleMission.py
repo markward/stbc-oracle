@@ -66,12 +66,23 @@ def _read_inputs():
     P["shield_frac"]  = _getf("shield_frac", 1.0)       # preset fraction of max
     P["shields_off"]  = int(_getf("shields_off", 0))    # 1 = zero every face
     P["settle_s"]     = _getf("settle_s", 2.0)
+    P["pin_start"]    = _getf("pin_start", -1.0)        # co-simulation: start the QB simulation at this game time (s)
+    P["pin_seed"]     = _getf("pin_seed", -1.0)         # co-simulation: SetRandomSeed(this) at the pinned start
     P["fire_at"]      = _getf("fire_at", 1.0)
     P["duration"]     = _getf("duration", 12.0)
     P["sample_dt"]    = _getf("sample_dt", 0.03)
     P["disable_target_weapons"] = int(_getf("disable_target_weapons", 1))
     P["rows"]         = _gets("rows", "abc")            # which row types to emit
     P["torp_type"]    = int(_getf("torp_type", -1))     # TorpedoSystem.SetAmmoType index (-1 leave)
+    P["att_dmg"]      = _gets("att_dmg", "none")        # attacker damage pattern 'Sub_Name/frac+...' applied at act time
+    P["duel"]         = int(_getf("duel", 0))           # 1 = both ships fight with stock Quick Battle AI until one dies
+    P["probe"]        = _gets("probe", "none")          # instant-read table (OracleProbe): engine
+    P["catalogue"]    = int(_getf("catalogue", 0))      # 1 = inventory + arc maps of both ships, no firing
+    P["arc_r"]        = _getf("arc_r", 50.0)             # catalogue arc-map sphere radius (GU)
+    P["arcs_only"]    = int(_getf("arcs_only", 0))       # 1 = catalogue skips hull points and rays
+    P["hit_radii"]    = _gets("hit_radii", "none")       # catalogue: IsHittableFromLocation sweep only, radii "20+57+150"
+    P["ai_probe"]     = int(_getf("ai_probe", 0))        # 1 = record every FireScript instance live (OracleAIProbe)
+    P["aim_sub"]      = _gets("aim_sub", "none")        # target subsystem to aim at, '_' for spaces ('none' = ship centre, stock targeting)
     P["pulse_power"]  = int(_getf("pulse_power", -1))   # EnergyWeapon.SetPowerSetting on pulse emitters
     P["dscale_set"]   = _getf("dscale_set", -1.0)       # >=0: PulseWeapon_SetDamageScale on every emitter at act time, if the binding exists
     P["time_scale"]   = _getf("time_scale", 1.0)        # UtopiaModule.SetTimeScale at takeover
@@ -81,6 +92,8 @@ def _read_inputs():
     P["gen_frac"]     = _getf("gen_frac", -1.0)         # target ShieldGenerator condition fraction
     P["ai"]           = int(_getf("ai", 0))             # 1 = leave the QuickBattle AI on the attacker
     P["ai_level"]     = _getf("ai_level", 0.5)          # BasicAttack Difficulty 0.0 / 0.5 / 1.0
+    P["friendly_ai_level"] = _getf("friendly_ai_level", -1.0)   # duel: the player-side ship's AI level (-1 = same as ai_level)
+    P["human"]        = int(_getf("human", 0))          # duel: 1 = a person flies the player ship (no friendly AI, weapons live)
     P["ai_module"]    = _gets("ai_module", "none")
     P["face_away"]    = _gets("face_away", "0")
     P["ai_patch"]     = _gets("ai_patch", "none")
@@ -125,6 +138,58 @@ ET_CUT    = App.UtopiaModule_GetNextEventType()
 ET_CAMSTEP = App.UtopiaModule_GetNextEventType()
 g_cam_steps = []
 ET_END    = App.UtopiaModule_GetNextEventType()
+ET_DUELCHK = App.UtopiaModule_GetNextEventType()
+ET_PAUSECHK = App.UtopiaModule_GetNextEventType()
+ET_PINSTART = App.UtopiaModule_GetNextEventType()
+g_duel_end = [0]
+g_human_flush = [0]
+
+# Pause watchdog (real-time timer, so it still fires while the game clock is stopped). Seen on Windows,
+# ~2-4% of duels: timers armed, frame loop and lockstep running, but the world update never runs and
+# game time stays at t0 -- the game believes it is paused (likely an activation race at start-up).
+# Every 2 s of real time until the first sample: if IsGamePaused(), mark it and ForceUnpause();
+# if not paused but game time has not moved, mark that once (a different cause).
+g_pause_chk = [0, -1.0, 0, 0]       # checks, last game time, unpaused count, frozen marked
+
+def OnPauseCheck(pObject, pEvent):
+    if g_rows > 0 or g_done or g_pause_chk[0] >= 30:
+        return
+    g_pause_chk[0] = g_pause_chk[0] + 1
+    try:
+        gt = App.g_kUtopiaModule.GetGameTime()
+        if App.g_kUtopiaModule.IsGamePaused():
+            g_pause_chk[2] = g_pause_chk[2] + 1
+            if g_pause_chk[2] <= 3:
+                _log.mark("game_paused_unpause%d" % g_pause_chk[2], "check=%d game=%.3f" % (g_pause_chk[0], gt))
+            App.g_kUtopiaModule.ForceUnpause()
+        elif g_pause_chk[1] >= 0.0 and gt == g_pause_chk[1] and not g_pause_chk[3]:
+            g_pause_chk[3] = 1
+            _log.mark("game_clock_frozen", "check=%d game=%.3f not paused" % (g_pause_chk[0], gt))
+        g_pause_chk[1] = gt
+    except:
+        _log.mark("pause_check_error", _log.exc())
+
+def OnDuelCheck(pObject, pEvent):
+    """Once a second: log both hulls; when either ship is dying/dead, end 3 s later."""
+    if g_duel_end[0] or g_done:
+        return
+    try:
+        t = App.g_kUtopiaModule.GetGameTime() - g_t0
+        da = g_pAttacker.IsDying() or g_pAttacker.IsDead()
+        dt = g_pTarget.IsDying() or g_pTarget.IsDead()
+        _log.pulse("duel t=%.1f A=%.0f T=%.0f" % (t, g_pAttacker.GetHull().GetCondition(), g_pTarget.GetHull().GetCondition()))
+        if P["human"]:
+            # a person may quit early (End Simulation, Exit): keep the rows on disk, every 10 checks (~10 s)
+            g_human_flush[0] = g_human_flush[0] + 1
+            if g_human_flush[0] >= 10:
+                g_human_flush[0] = 0
+                _log.flush(0)
+        if da or dt:
+            g_duel_end[0] = 1
+            _log.mark("duel_over", "t=%.2f attacker_dying=%d target_dying=%d" % (t, da, dt))
+            MissionLib.CreateTimer(ET_END, __name__ + ".OnEnd", App.g_kUtopiaModule.GetGameTime() + 3.0, 0.0, 0.0)
+    except:
+        _log.mark("duel_check_error", _log.exc())
 
 # --- helpers ----------------------------------------------------------------
 def _place(pShip, x, y, z, fx, fy, fz, ux, uy, uz):
@@ -238,6 +303,19 @@ def _range():
     dx = t.x - a.x; dy = t.y - a.y; dz = t.z - a.z
     return (dx * dx + dy * dy + dz * dz) ** 0.5
 
+def _swig_ptr(o):
+    """The C++ object address behind a SWIG shadow object ('_8c5f3a0_p_ShipSubsystem' -> '8c5f3a0'),
+    so native hook logs can be joined to script-side names.  '' if unavailable."""
+    try:
+        t = o.this
+        if type(t) == type(""):
+            parts = string.split(t, "_")
+            if len(parts) > 1:
+                return parts[1]
+        return str(t)
+    except:
+        return ""
+
 def _p3(v):
     return "%.3f,%.3f,%.3f" % (v.x, v.y, v.z)
 
@@ -334,11 +412,14 @@ def _record_meta():
     for s in g_subs:
         try:
             pos = s.GetPosition()
-            _log.meta("sub%02d" % i, "%s|%.0f|%.3f|%s" % (
-                s.GetName(), s.GetMaxCondition(), s.GetRadius(), _p3(pos)))
+            _log.meta("sub%02d" % i, "%s|%.0f|%.3f|%s|%s" % (
+                s.GetName(), s.GetMaxCondition(), s.GetRadius(), _p3(pos), _swig_ptr(s)))
         except:
             _log.meta("sub%02d" % i, "%s|err" % s.GetName())
         i = i + 1
+    # SWIG pointers of both ships, so the native hit recorder (CombatTap.asi) can name them.
+    _log.meta("ptr_attacker", _swig_ptr(g_pAttacker))
+    _log.meta("ptr_target", _swig_ptr(g_pTarget))
     for (nm, pShip) in (("attacker", g_pAttacker), ("target", g_pTarget)):
         try:
             imp = pShip.GetImpulseEngineSubsystem()
@@ -378,6 +459,13 @@ def _OracleInitialize(pMission):
     QB = QuickBattle.QuickBattle
     _log.mark("mission_initialize", "QuickBattle (wrapped)")
     _read_inputs()
+    if P["ai_probe"]:
+        import Oracle.OracleAIProbe
+        Oracle.OracleAIProbe.install(_log)     # before any AI is built (same-name FireScript subclass)
+        Oracle.OracleAIProbe.install_plain(_log)   # PlainAI behaviour call counts (xa rows)
+        Oracle.OracleAIProbe.install_speed(_log)   # the AI's speed commands, by behaviour (xi rows)
+        Oracle.OracleAIProbe.install_firescript(_log)   # FireScript weapon lists + engine-kept instance (fsNN marks)
+        Oracle.OracleAIProbe.install_tree(_log)    # every AI node / condition: focus + status (xr/xy/xk rows)
     _orig["Initialize"](pMission)
     _log.mark("qb_initialized", "1")
     try:
@@ -394,8 +482,41 @@ def _OracleInitialize(pMission):
 
 g_attacker_name = ""
 
+class _NoChain:
+    """Stand-in for the preload event's destination when the start is deferred: the event was already
+    passed on (CallNextHandler) when it arrived; QB's StartSimulation2 uses its arguments for nothing else."""
+    def CallNextHandler(self, pEvent):
+        pass
+
+def OnPinnedStart(pObject, pEvent):
+    # Re-seed here as well: frames between the preload finishing and the pin also draw random numbers
+    # (Windows 2026-10-17: the one run whose preload finished a tick early diverged from draw 341), so
+    # the generator's position at battle start must not depend on load timing.
+    if P["pin_seed"] >= 0.0:
+        try:
+            App.g_kSystemWrapper.SetRandomSeed(int(P["pin_seed"]))
+            _log.mark("seed_at_pin", "%d" % int(P["pin_seed"]))
+        except:
+            _log.mark("seed_at_pin_error", _log.exc())
+    _log.mark("start_pinned", "game=%.3f" % App.g_kUtopiaModule.GetGameTime())
+    _DoStartSimulation2(_NoChain(), None)
+
 def _OracleStartSimulation2(pObject, pEvent):
-    global g_pSet, g_pAttacker, g_pTarget, g_banks, g_subs, g_t0, g_attacker_name
+    # Co-simulation (pin_start > 0): the preload finishes in REAL time, so the frame on which the battle
+    # starts varied between otherwise identical runs (Windows 2026-10-16: armed at game 4.100 vs 4.117),
+    # which changed every later random draw. Pass the event on now, start at a fixed game time instead.
+    if P["pin_start"] > 0.0:
+        now = App.g_kUtopiaModule.GetGameTime()
+        if now < P["pin_start"]:
+            pObject.CallNextHandler(pEvent)
+            MissionLib.CreateTimer(ET_PINSTART, __name__ + ".OnPinnedStart", P["pin_start"], 0.0, 0.0)
+            _log.mark("start_deferred", "preload done at game=%.3f, start at %.3f" % (now, P["pin_start"]))
+            return
+        _log.mark("pin_late", "preload done at game=%.3f after pin %.3f" % (now, P["pin_start"]))
+    _DoStartSimulation2(pObject, pEvent)
+
+def _DoStartSimulation2(pObject, pEvent):
+    global g_pSet, g_pAttacker, g_pTarget, g_banks, g_subs, g_t0, g_attacker_name, g_acted
     _orig["StartSimulation2"](pObject, pEvent)
     _log.mark("qb_simulation_started", "1")
     try:
@@ -476,7 +597,7 @@ def _OracleStartSimulation2(pObject, pEvent):
         _red_alert(g_pAttacker)
         if P["target_alert"] != "red":
             _alert(g_pTarget, P["target_alert"])
-        if P["disable_target_weapons"]:
+        if P["disable_target_weapons"] and not P["human"]:
             _zero_weapons(g_pTarget)
         if P["shield_power"] >= 0.0 or P["gen_frac"] >= 0.0:
             try:
@@ -502,6 +623,12 @@ def _OracleStartSimulation2(pObject, pEvent):
                 _log.mark("time_scale_error", _log.exc())
         g_banks = _emitters(g_pAttacker)
         g_subs = _all_subsystems(g_pTarget)
+        if string.find(P["rows"], "x") >= 0:
+            try:
+                import Oracle.OracleTelemetry
+                Oracle.OracleTelemetry.setup(g_pAttacker, g_pTarget)
+            except:
+                _log.mark("telemetry_setup_error", _log.exc())
         _log.mark("placed", "banks=%d subs=%d range=%.2f" % (len(g_banks), len(g_subs), _range()))
         g_t0 = App.g_kUtopiaModule.GetGameTime()
         _dscale_dump("spawn")
@@ -515,7 +642,78 @@ def _OracleStartSimulation2(pObject, pEvent):
         now = App.g_kUtopiaModule.GetGameTime()
         g_t0 = now + P["settle_s"]
         g_timers.append(MissionLib.CreateTimer(ET_SAMPLE, __name__ + ".OnSample", g_t0, P["sample_dt"], -1))
-        MissionLib.CreateTimer(ET_ACT, __name__ + ".OnAct", g_t0 + P["fire_at"], 0.0, 0.0)
+        import Oracle.OracleSession
+        nshots = Oracle.OracleSession.load(_cfg, _SEC)
+        if P["duel"]:
+            # Duel: the enemy keeps QuickBattleAI (P["ai"]); the player's ship gets the stock
+            # QuickBattleFriendlyAI (BasicAttack vs the enemy group, same difficulty).
+            try:
+                import QuickBattle.QuickBattle
+                import QuickBattle.QuickBattleFriendlyAI
+                before = QuickBattle.QuickBattle.GetCurrentAILevel()
+                # QuickBattleFriendlyAI reads QuickBattle's "current AI level", which is whatever
+                # the last ship QuickBattle set up used; pin it to the duel's level so both
+                # ships run BasicAttack at the same Difficulty.
+                lvl = P["ai_level"]
+                if P["friendly_ai_level"] >= 0.0:
+                    lvl = P["friendly_ai_level"]
+                QuickBattle.QuickBattle.g_iCurrentAILevel = lvl
+                if P["human"]:
+                    # human run: the player ship stays under the player's controls
+                    _log.mark("human", "player ship %s left to the player; enemy %s AI level %s" % (
+                        P["target"], P["attacker"], str(P["ai_level"])))
+                    try:
+                        import Oracle.OracleHuman
+                        Oracle.OracleHuman.install(MissionLib.GetMission())
+                    except:
+                        _log.mark("human_events_error", _log.exc())
+                else:
+                    g_pTarget.SetAI(QuickBattle.QuickBattleFriendlyAI.CreateAI(g_pTarget), 0, 0)
+                if P["att_dmg"] != "none":
+                    # duels never reach OnAct: apply the attacker's damage preset here (splash tests)
+                    Oracle.OracleSession._damage_attacker({"admg": P["att_dmg"]})
+                    _log.mark("att_dmg", "duel start: " + P["att_dmg"])
+                _log.mark("duel_ai", "target AI set; QB level before=%s pinned=%s attacker=%s" % (
+                    str(before), str(QuickBattle.QuickBattle.GetCurrentAILevel()), str(P["ai_level"])))
+            except:
+                _log.mark("duel_ai_error", _log.exc())
+            g_acted = 1
+            MissionLib.CreateTimer(ET_DUELCHK, __name__ + ".OnDuelCheck", g_t0 + 1.0, 1.0, -1)
+            try:
+                MissionLib.CreateTimer(ET_PAUSECHK, __name__ + ".OnPauseCheck",
+                                       App.g_kUtopiaModule.GetRealTime() + 2.0, 2.0, -1, 0, 1)
+            except:
+                _log.mark("pause_watch_error", _log.exc())
+        if P["probe"] != "none":
+            # Instant-read tables (OracleProbe): set state, wait one power update, read.
+            import Oracle.OracleProbe
+            g_acted = 1
+            if P["probe"] == "pods":
+                Oracle.OracleProbe.build_pods(g_pAttacker, g_pTarget)
+            elif P["probe"] == "nacelles":
+                Oracle.OracleProbe.build_nacelles(g_pAttacker, g_pTarget)
+            elif P["probe"] == "threshold":
+                Oracle.OracleProbe.build_threshold(g_pAttacker, g_pTarget)
+            elif P["probe"] == "power":
+                Oracle.OracleProbe.build_power(g_pAttacker, g_pTarget)
+            else:
+                Oracle.OracleProbe.build(g_pAttacker, g_pTarget)
+            Oracle.OracleProbe.start(g_t0 + 1.0)
+            P["duration"] = 1.0 + Oracle.OracleProbe.total_seconds() + 30.0
+        elif P["catalogue"]:
+            # Catalogue mode: full inventory and arc maps of both ships, then quit.
+            g_acted = 1
+            MissionLib.CreateTimer(ET_ACT, "Oracle.OracleMission.OnCatalogue", g_t0 + 1.0, 0.0, 0.0)
+            P["duration"] = 3.0
+        elif nshots > 0:
+            # Session mode: many shots in this launch, target restored between them.
+            g_acted = 1
+            Oracle.OracleSession.start(g_t0 + P["fire_at"])
+            P["duration"] = P["fire_at"] + Oracle.OracleSession.total_seconds() + 1.0
+            _log.mark("session", "shots=%d seconds=%.1f" % (nshots, P["duration"]))
+            _record_meta()
+        else:
+            MissionLib.CreateTimer(ET_ACT, __name__ + ".OnAct", g_t0 + P["fire_at"], 0.0, 0.0)
         MissionLib.CreateTimer(ET_END, __name__ + ".OnEnd", g_t0 + P["duration"] + 0.5, 0.0, 0.0)
         _log.mark("timers_armed", "now=%.3f t0=%.3f" % (now, g_t0))
     except:
@@ -532,6 +730,84 @@ def _preset_shields():
     if P["shield_face"] >= 0:
         f = P["shield_face"]
         sh.SetCurShields(f, sh.GetMaxShields(f) * P["shield_frac"])
+
+def _tubes_state():
+    out = ""
+    try:
+        ts = g_pAttacker.GetTorpedoSystem()
+        for i in range(ts.GetNumChildSubsystems()):
+            t = App.TorpedoTube_Cast(ts.GetChildSubsystem(i))
+            if t is not None:
+                out = out + "%d" % t.GetNumReady()
+        out = out + " am=%d" % ts.GetAmmoTypeNumber()
+    except:
+        out = "err"
+    return out
+
+def _ammo_event(name, pEvent):
+    try:
+        d = pEvent.GetDestination()
+        dn = "-"
+        if d is not None:
+            o = App.ObjectClass_Cast(d)
+            if o is not None:
+                dn = string.replace(o.GetName(), " ", "_")
+            else:
+                sub = App.ShipSubsystem_Cast(d)
+                if sub is not None:
+                    dn = "sub:" + string.replace(sub.GetName(), " ", "_")
+        sn = "-"
+        src = pEvent.GetSource()
+        if src is not None:
+            sub = App.ShipSubsystem_Cast(src)
+            if sub is not None:
+                sn = "sub:" + string.replace(sub.GetName(), " ", "_")
+            else:
+                o = App.ObjectClass_Cast(src)
+                if o is not None:
+                    sn = string.replace(o.GetName(), " ", "_")
+        _log.row("ev t=%.3f %s src=%s dst=%s tubes=%s" % (App.g_kUtopiaModule.GetGameTime() - g_t0, name, sn[:40], dn[:40], _tubes_state()))
+    except:
+        _log.row("ev %s err %s" % (name, _log.exc()[:80]))
+
+def OnAmmoTorpFired(pObject, pEvent):
+    _ammo_event("TORPEDO_FIRED", pEvent)
+    pObject.CallNextHandler(pEvent)
+
+def OnAmmoTorpReload(pObject, pEvent):
+    _ammo_event("TORPEDO_RELOAD", pEvent)
+    pObject.CallNextHandler(pEvent)
+
+def OnAmmoSubDisabled(pObject, pEvent):
+    _ammo_event("SUBSYSTEM_DISABLED", pEvent)
+    pObject.CallNextHandler(pEvent)
+
+def OnAmmoSubOperational(pObject, pEvent):
+    _ammo_event("SUBSYSTEM_OPERATIONAL", pEvent)
+    pObject.CallNextHandler(pEvent)
+
+def _act_ammoswitch():
+    """weapon=ammoswitch: which events does TorpedoSystem.SetAmmoType's tube unload post?
+    rows: ev t=<s> <EVENT> src= dst= tubes=<ready per tube> am=<type>"""
+    try:
+        pMission = MissionLib.GetMission()
+        App.g_kEventManager.AddBroadcastPythonFuncHandler(App.ET_TORPEDO_FIRED, pMission, __name__ + ".OnAmmoTorpFired")
+        App.g_kEventManager.AddBroadcastPythonFuncHandler(App.ET_TORPEDO_RELOAD, pMission, __name__ + ".OnAmmoTorpReload")
+        App.g_kEventManager.AddBroadcastPythonFuncHandler(App.ET_SUBSYSTEM_DISABLED, pMission, __name__ + ".OnAmmoSubDisabled")
+        App.g_kEventManager.AddBroadcastPythonFuncHandler(App.ET_SUBSYSTEM_OPERATIONAL, pMission, __name__ + ".OnAmmoSubOperational")
+    except:
+        _log.mark("ammo_handlers_error", _log.exc())
+    try:
+        c = App.ConditionScript_Create("Conditions.ConditionTorpsReady", "ConditionTorpsReady", g_pAttacker.GetName(), App.TGPoint3_GetModelForward())
+        g_ammo_cond.append(c)
+    except:
+        _log.mark("ammo_cond_error", _log.exc())
+    _log.mark("ammo_before", _tubes_state())
+    try:
+        g_pAttacker.GetTorpedoSystem().SetAmmoType(1)
+    except:
+        _log.mark("ammo_switch_error", _log.exc())
+    _log.mark("ammo_after", _tubes_state())
 
 def _preset_subsystems():
     """sub_preset / repair_power / repair_enqueue: damage named target
@@ -573,6 +849,9 @@ def _preset_subsystems():
             _log.mark("preset_error", nm + " " + _log.exc())
 
 def _act_weapon():
+    if P["weapon"] == "ammoswitch":
+        _act_ammoswitch()
+        return
     ps = _weapon_system(g_pAttacker)
     if ps is None:
         _log.mark("no_weapon_system", P["weapon"])
@@ -603,6 +882,25 @@ def _act_weapon():
             App.g_kEventManager.AddBroadcastPythonFuncHandler(App.ET_TRACTOR_BEAM_STOPPED_HITTING, pMission, __name__ + ".OnTractorStop")
         except:
             _log.mark("tractor_events_error", _log.exc())
+    if P["aim_sub"] != "none" and P["weapon"] != "tractor":
+        # The player's subsystem targeting: SetTargetSubsystem, then fire at the ship's
+        # target offset (TacticalControlHandlers: StartFiring(GetTarget(), GetTargetOffsetTG())).
+        want = string.replace(P["aim_sub"], "_", " ")
+        sub = None
+        for s in g_subs:
+            if s.GetName() == want:
+                sub = s
+        if sub is None:
+            _log.mark("aim_sub_missing", want)
+        else:
+            try:
+                g_pAttacker.SetTargetSubsystem(sub)
+                off = g_pAttacker.GetTargetOffsetTG()
+                _log.mark("aim_sub", "%s off=%s" % (P["aim_sub"], _p3(off)))
+                ps.StartFiring(g_pTarget, off)
+                return
+            except:
+                _log.mark("aim_sub_error", _log.exc())
     ps.StartFiring(g_pTarget)
 
 def _digits(s):
@@ -696,6 +994,38 @@ def _act_motion():
             MissionLib.CreateTimer(ET_CUT, __name__ + ".OnWarp", g_t0 + P["fire_at"] + 6.0, 0.0, 0.0)
         else:
             OnWarp(None, None)
+    elif m[:7] == "turnloc":
+        # turnloc<az>_<el>[s]: TurnTowardLocation on a fixed point 100 GU away at bearing az (0 nose, 90 starboard)
+        # and elevation el in the ship's own frame at act time, re-issued every sample as an AI script would
+        # (OnSample). A trailing "s" adds full impulse.  Measures the engine's AI turn controller.
+        try:
+            spec = m[7:]
+            once = 0
+            if spec[-1:] == "o":
+                once = 1                   # issue once: does the engine keep steering to a stored goal?
+                spec = spec[:-1]
+            moving = 0
+            if spec[-1:] == "s":
+                moving = 1
+                spec = spec[:-1]
+            parts = string.split(spec, "_")
+            az = float(parts[0]) * math.pi / 180.0
+            el = float(parts[1]) * math.pi / 180.0
+            R = g_pAttacker.GetWorldRotation()
+            body = App.TGPoint3()
+            body.SetXYZ(100.0 * math.cos(el) * math.sin(az), 100.0 * math.cos(el) * math.cos(az), 100.0 * math.sin(el))
+            body.MultMatrixLeft(R)
+            loc = g_pAttacker.GetWorldLocation()
+            pt = App.TGPoint3()
+            pt.SetXYZ(loc.x + body.x, loc.y + body.y, loc.z + body.z)
+            if not once:
+                g_turnloc[:] = [pt.x, pt.y, pt.z]      # floats: a TGPoint3 global would break mission pickling
+            if moving:
+                g_pAttacker.SetImpulse(1.0, fwd, App.PhysicsObjectClass.DIRECTION_MODEL_SPACE)
+            g_pAttacker.TurnTowardLocation(pt)
+            _log.mark("turnloc", "%s pt=%.1f,%.1f,%.1f" % (m, pt.x, pt.y, pt.z))
+        except:
+            _log.mark("turnloc_error", _log.exc())
     elif m == "yawdirect":
         v = App.TGPoint3(); v.SetXYZ(0.0, 0.0, 1.0)
         g_pAttacker.SetTargetAngularVelocityDirect(v)
@@ -1310,12 +1640,63 @@ def OnCut(pObject, pEvent):
     except:
         _log.mark("cut_error", _log.exc())
 
+def OnCatalogue(pObject, pEvent):
+    import Oracle.OracleCatalogue
+    C = Oracle.OracleCatalogue
+    try:
+        r = P["range_gu"]
+        C.ARC_R = P["arc_r"]
+        if P["hit_radii"] != "none":
+            radii = []
+            for x in string.split(P["hit_radii"], "+"):
+                radii.append(string.atof(x))
+            st = C.inventory("T", g_pTarget)
+            C.hittable("T", g_pTarget, st, _tgt_to_world, radii)
+            sa = C.inventory("A", g_pAttacker)
+            C.hittable("A", g_pAttacker, sa, _att_to_world, radii)
+            OnEnd(pObject, pEvent)
+            return
+        st = C.inventory("T", g_pTarget)
+        C.arcs("T", g_pTarget, st, _tgt_to_world)
+        if not P["arcs_only"]:
+            C.hull_points("T", g_pTarget)
+            C.rays("T", g_pTarget, _tgt_to_world, _tgt_from_world)
+            C.rays_aim("T", g_pTarget, st, _tgt_to_world, _tgt_from_world)
+        sa = C.inventory("A", g_pAttacker)
+        C.arcs("A", g_pAttacker, sa, _att_to_world)
+        if not P["arcs_only"]:
+            C.hull_points("A", g_pAttacker)
+            C.rays("A", g_pAttacker, _att_to_world, _att_from_world)
+            C.rays_aim("A", g_pAttacker, sa, _att_to_world, _att_from_world)
+    except:
+        _log.mark("catalogue_error", _log.exc())
+    # end promptly: the OnEnd timer would otherwise fire on its own schedule
+    OnEnd(pObject, pEvent)
+
+def _tgt_to_world(mx, my, mz):
+    # target at the origin, nose (model +Y) along world -Y, up (model +Z) along world +Z
+    return (-mx, -my, mz)
+
+def _tgt_from_world(wx, wy, wz):
+    return (-wx, -wy, wz)
+
+def _att_from_world(wx, wy, wz):
+    return (wx, wy + P["range_gu"], wz)
+
+def _att_to_world(mx, my, mz):
+    # catalogue runs place the attacker at angle 0, elev 0: (0, -range, 0) facing world +Y
+    return (mx, my - P["range_gu"], mz)
+
 def OnAct(pObject, pEvent):
     global g_acted, g_cam_steps
     if g_acted:
         return
     g_acted = 1
     try:
+        if P["att_dmg"] != "none":
+            import Oracle.OracleSession
+            Oracle.OracleSession._damage_attacker({"admg": P["att_dmg"]})
+            _log.mark("att_dmg", P["att_dmg"])
         _preset_shields()
         _preset_subsystems()
         if P["weapon"] != "none":
@@ -1444,10 +1825,27 @@ def _camera_row(t):
 g_hit_seen = 0
 g_hit_ref = -1.0
 
+g_turnloc = []
+
+
+g_ammo_cond = []
+
 def OnSample(pObject, pEvent):
     global g_rows, g_last_row, g_hit_seen, g_hit_ref
     if g_done:
         return
+    if g_ammo_cond:
+        try:
+            _log.row("ac t=%.3f tubes=%s cond=%d" % (App.g_kUtopiaModule.GetGameTime() - g_t0, _tubes_state(), g_ammo_cond[0].GetStatus()))
+        except:
+            pass
+    if g_turnloc:
+        try:
+            tp = App.TGPoint3()
+            tp.SetXYZ(g_turnloc[0], g_turnloc[1], g_turnloc[2])
+            g_pAttacker.TurnTowardLocation(tp)
+        except:
+            pass
     try:
         t = App.g_kUtopiaModule.GetGameTime() - g_t0
         fr = App.g_kSystemWrapper.GetUpdateNumber()
@@ -1479,6 +1877,12 @@ def OnSample(pObject, pEvent):
                 elif tot < g_hit_ref - 1.0:
                     g_hit_seen = 1
                     _dscale_dump("firsthit")
+        if string.find(P["rows"], "x") >= 0:
+            try:
+                import Oracle.OracleTelemetry
+                Oracle.OracleTelemetry.sample(App.g_kUtopiaModule.GetGameTime())
+            except:
+                _log.mark("telemetry_error", _log.exc())
         if string.find(P["rows"], "b") >= 0:
             conds = []
             for s in g_subs:

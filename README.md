@@ -28,6 +28,7 @@ python oracle/analyze.py          # report per docs/oracle/results/*.json
 | `run_oracle.py` | Python 3 driver: deploy scripts, write inputs, launch, focus, skip movies, collect, parse |
 | `capture.py` | `PrintWindow(PW_RENDERFULLCONTENT)` screenshots — BitBlt shows the 3D view black |
 | `study.py` / `analyze.py` / `scene_report.py` | the study matrix and its reductions (`scene_report.py` writes `docs/mission-scenes.md`) |
+| `native/` | optional native capture plugins (CombatTap per-hit log, Lockstep fixed-step clock, RandTap seed control, OracleAssist background running) and their build script; see `native/README.md` |
 
 The oracle directory (`--oracle-dir`, default
 `~/Documents/Star Trek Bridge Commander/bc_oracle`) is a clean BC install plus
@@ -127,3 +128,34 @@ target at act time (`count` also logs `ET_ENVIRONMENT_DAMAGE` events;
 `rNNNN` rows of the three kinds; `oracle_boot.cfg` holds progress markers
 (`[OracleBoot]` mission, `[OracleHook]` startup) — the first thing to read
 when a run does nothing.
+
+A result written under `docs/results/` (committed, public) is a trimmed copy
+(`run_oracle.for_docs`): no hostname, no second copy of `params` in the
+manifest, and `raw_rows` only for row kinds that are not already parsed. A
+result written anywhere else, such as the ignored `results_mac/` / `results_win/`, keeps everything.
+
+## Settings (environment)
+
+| Variable | Used by | Meaning |
+|---|---|---|
+| `DAUNTLESS_ORACLE_DIR` | `run_oracle.py` | the game copy to run (default: the platform's `bc_oracle` / CrossOver bottle path) |
+| `ORACLE_BOTTLE` | `run_oracle.py` (Mac) | CrossOver bottle name (default `BC Oracle`) |
+| `ORACLE_SDK_HARDPOINTS` | `run_oracle.py --hp-patch`, `reports/aim_bank.py`, `reports/export_hittable_tables.py` | the SDK's `scripts/ships/Hardpoints` folder (Windows default: the SDK beside the oracle copy; no default on the Mac) |
+| `ORACLE_RESULTS` | `scorecard/`, `reports/export_hittable_tables.py` | the folder of captures (default `results_mac/`) |
+| `DAUNTLESS_ROOT` | `reports/rating_replay.py` | a built Dauntless checkout, for ship meshes |
+
+`export_hittable_tables.py` writes into `<results>/exports/` unless given `--out-dir`; it never writes into a Dauntless checkout by default.
+
+## AI duel comparison (original vs Dauntless)
+
+| | |
+|---|---|
+| `oracle/reports/duel_summary.py` | one summary per duel, same format for both games: winner/length, damage and hits by weapon (each hit counted once), torpedo launches + nose/tail split + loaded-and-lined-up conversion, damage taken split shield / passed / hull / per subsystem, behaviour shares, shield and hull curves. Cached under `results_mac/summary_cache/`. |
+| `oracle/reports/matchup_stats.py` | per matchup, every metric as a distribution over duels: medians and a bootstrap 90% interval on the difference; flags only gaps outside the noise and > 10%. `--only <class>`, `--flagged`, `--json` |
+| `scorecard/test_matchups.py` | the same, as scorecard rows (wrong / close / match) |
+| `scorecard/dauntless_aim_duels.py` | the Dauntless side. `AIM_DUEL_PAIRS`, `AIM_DUEL_LEVELS`, `AIM_DUEL_ANGLES`, `AIM_DUEL_REPEATS` (repeat k > 0 writes `_rep<k>`), `AIM_DUEL_SKIP_EXISTING=1` to resume |
+
+Capture details the summaries rely on: `tele_X_ptr` / `tele_X_sptr<k>` meta (ship and subsystem
+addresses, so CombatTap rows are attributed exactly; older captures fall back to inference and say so),
+`xac` rows (`GetAccelerationTG`). CombatTap re-logs a bleed-through hit under the same `hit=` ID and
+reuses IDs later: count a hit once per ID within 0.5 s.
